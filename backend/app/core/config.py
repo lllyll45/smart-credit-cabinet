@@ -1,3 +1,4 @@
+
 """Application settings loaded from environment variables and .env."""
 
 from functools import lru_cache
@@ -15,9 +16,11 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://smart_credit:change_me@localhost:5432/smart_credit"
     )
+
     jwt_secret_key: SecretStr = SecretStr("replace_me_before_use")
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=60, gt=0)
+
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(
@@ -29,7 +32,11 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return [
+            origin.strip()
+            for origin in self.cors_origins.split(",")
+            if origin.strip()
+        ]
 
 
 @lru_cache
