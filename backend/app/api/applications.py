@@ -1,7 +1,3 @@
-
-"""Credit applications API."""
-
-from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,45 +13,47 @@ from app.schemas.credit_application import (
     CreditApplicationResponse,
     CreditApplicationUpdate,
 )
+from app.services.application_processing import process_credit_application
+
+
+DbSession = Annotated[Session, Depends(get_db)]
 
 router = APIRouter(
     prefix="/applications",
-    tags=["Credit applications"],
+    tags=["Applications"],
 )
-
-DbSession = Annotated[Session, Depends(get_db)]
 
 
 def validate_credit_product(
     db: Session,
     product_id: int,
-    amount: Decimal,
+    amount,
     term_months: int,
 ) -> CreditProduct:
-    """Check that a product is active and supports the requested loan."""
+    """Проверяет доступность кредитного продукта и его ограничения."""
 
-    product = db.scalar(
-        select(CreditProduct).where(
-            CreditProduct.id == product_id,
-        )
-    )
+    product = db.get(CreditProduct, product_id)
 
     if product is None or not product.is_active:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Credit product does not exist or is inactive",
+            detail="Credit product not found or inactive",
         )
 
     if not product.min_amount <= amount <= product.max_amount:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Amount is outside the credit product limits",
+            detail="Application amount is outside product limits",
         )
 
-    if not product.min_term_months <= term_months <= product.max_term_months:
+    if not (
+        product.min_term_months
+        <= term_months
+        <= product.max_term_months
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Term is outside the credit product limits",
+            detail="Application term is outside product limits",
         )
 
     return product
@@ -71,16 +69,24 @@ def create_application(
     user: CurrentUser,
     db: DbSession,
 ):
-    validate_credit_product(
-        db=db,
-        product_id=data.credit_product_id,
-        amount=data.amount,
-        term_months=data.term_months,
-    )
+    """Создаёт черновик кредитной заявки."""
+
+    if data.credit_product_id is not None:
+        validate_credit_product(
+            db=db,
+            product_id=data.credit_product_id,
+            amount=data.amount,
+            term_months=data.term_months,
+        )
 
     application = CreditApplication(
-        **data.model_dump(),
         user_id=user.id,
+        credit_product_id=data.credit_product_id,
+        amount=data.amount,
+        term_months=data.term_months,
+        purpose=data.purpose,
+        monthly_income=data.monthly_income,
+        employment=data.employment,
         status="draft",
     )
 
@@ -99,13 +105,15 @@ def list_applications(
     user: CurrentUser,
     db: DbSession,
 ):
-    query = (
+    """Возвращает заявки текущего пользователя."""
+
+    applications = db.scalars(
         select(CreditApplication)
         .where(CreditApplication.user_id == user.id)
-        .order_by(CreditApplication.created_at.desc())
-    )
+        .order_by(CreditApplication.id.desc())
+    ).all()
 
-    return db.scalars(query).all()
+    return applications
 
 
 @router.get(
@@ -117,6 +125,8 @@ def get_application(
     user: CurrentUser,
     db: DbSession,
 ):
+    """Возвращает конкретную заявку текущего пользователя."""
+
     application = db.scalar(
         select(CreditApplication).where(
             CreditApplication.id == application_id,
@@ -143,6 +153,8 @@ def update_application(
     user: CurrentUser,
     db: DbSession,
 ):
+    """Изменяет заявку, пока она находится в статусе черновика."""
+
     application = db.scalar(
         select(CreditApplication).where(
             CreditApplication.id == application_id,
@@ -159,46 +171,30 @@ def update_application(
     if application.status != "draft":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Only draft applications can be edited",
+            detail="Only draft applications can be updated",
         )
 
-    changes = data.model_dump(exclude_unset=True)
+    update_data = data.model_dump(exclude_unset=True)
 
-    for field, value in changes.items():
-        if value is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"{field} cannot be null",
-            )
+    new_product_id = update_data.get(
+        "credit_product_id",
+        application.credit_product_id,
+    )
+    new_amount = update_data.get("amount", application.amount)
+    new_term_months = update_data.get(
+        "term_months",
+        application.term_months,
+    )
 
-    if any(
-        field in changes
-        for field in ("credit_product_id", "amount", "term_months")
-    ):
-        product_id = changes.get(
-            "credit_product_id",
-            application.credit_product_id,
-        )
-        amount = changes.get("amount", application.amount)
-        term_months = changes.get(
-            "term_months",
-            application.term_months,
-        )
-
-        if product_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Credit product must be selected",
-            )
-
+    if new_product_id is not None:
         validate_credit_product(
             db=db,
-            product_id=product_id,
-            amount=amount,
-            term_months=term_months,
+            product_id=new_product_id,
+            amount=new_amount,
+            term_months=new_term_months,
         )
 
-    for field, value in changes.items():
+    for field, value in update_data.items():
         setattr(application, field, value)
 
     db.commit()
@@ -216,6 +212,8 @@ def submit_application(
     user: CurrentUser,
     db: DbSession,
 ):
+    """Отправляет заявку и автоматически рассчитывает решение."""
+
     application = db.scalar(
         select(CreditApplication).where(
             CreditApplication.id == application_id,
@@ -248,9 +246,16 @@ def submit_application(
         term_months=application.term_months,
     )
 
-    application.status = "submitted"
-
-    db.commit()
-    db.refresh(application)
+    try:
+        application = process_credit_application(
+            db=db,
+            application=application,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
     return application

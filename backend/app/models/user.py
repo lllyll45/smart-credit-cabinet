@@ -1,5 +1,6 @@
 
 """User model."""
+
 from datetime import datetime
 
 from sqlalchemy import DateTime, String, func
@@ -13,7 +14,10 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
 
     email: Mapped[str] = mapped_column(
         String(255),
@@ -25,6 +29,13 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
+    )
+
+    role: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="client",
+        server_default="client",
     )
 
     created_at: Mapped[datetime] = mapped_column(

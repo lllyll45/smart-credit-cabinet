@@ -61,6 +61,28 @@ class CreditApplication(Base):
         nullable=True,
     )
 
+    
+    decision_comment: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    monthly_payment: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    total_payment: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    overpayment: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -40,6 +40,13 @@ class CreditApplicationResponse(BaseModel):
     status: str
     comment: str | None
 
+    
+    decision_comment: str | None
+    monthly_payment: Decimal | None
+    total_payment: Decimal | None
+    overpayment: Decimal | None
+
+
     created_at: datetime
     updated_at: datetime
 
