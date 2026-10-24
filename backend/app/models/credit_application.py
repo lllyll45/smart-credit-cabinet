@@ -1,24 +1,17 @@
 
-"""Credit application database model."""
-
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
 
 class CreditApplication(Base):
-    """Credit application submitted by a user."""
-
     __tablename__ = "credit_applications"
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        index=True,
-    )
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
 
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -26,13 +19,18 @@ class CreditApplication(Base):
         index=True,
     )
 
-    amount: Mapped[float] = mapped_column(
+    credit_product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("credit_products.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    amount: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),
         nullable=False,
     )
 
     term_months: Mapped[int] = mapped_column(
-        Integer,
         nullable=False,
     )
 
@@ -41,18 +39,18 @@ class CreditApplication(Base):
         nullable=False,
     )
 
-    monthly_income: Mapped[float] = mapped_column(
+    monthly_income: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
-        nullable=False,
+        nullable=True,
     )
 
-    employment: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
+    employment: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(
-        String(30),
+        String(50),
         nullable=False,
         default="draft",
         server_default="draft",
@@ -78,5 +76,10 @@ class CreditApplication(Base):
 
     user = relationship(
         "User",
+        back_populates="applications",
+    )
+
+    credit_product = relationship(
+        "CreditProduct",
         back_populates="applications",
     )
