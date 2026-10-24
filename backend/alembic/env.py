@@ -8,6 +8,8 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import settings
 from app.core.database import Base
 from app.models.user import User  # noqa: F401
+from app.models.credit_application import CreditApplication  # noqa: F401
+from app.models.credit_product import CreditProduct  # noqa: F401
 
 # Импорт моделей необходим, чтобы Alembic видел их таблицы.
 # Будем добавлять импорты моделей по мере их создания.

@@ -105,3 +105,18 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 @router.get("/me", response_model=UserResponse)
 def get_me(user: CurrentUser):
     return user
+
+
+def get_staff_user(user: CurrentUser) -> User:
+    """Allow access only to staff members and administrators."""
+
+    if user.role not in ("staff", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff access required",
+        )
+
+    return user
+
+
+StaffUser = Annotated[User, Depends(get_staff_user)]
