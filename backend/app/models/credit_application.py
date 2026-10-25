@@ -1,4 +1,3 @@
-
 """Credit application database model."""
 
 from datetime import datetime
@@ -81,4 +80,11 @@ class CreditApplication(Base):
     credit_product = relationship(
         "CreditProduct",
         back_populates="applications",
+    )
+
+    history = relationship(
+        "ApplicationHistory",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApplicationHistory.created_at",
     )
