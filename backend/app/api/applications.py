@@ -429,3 +429,133 @@ def reject_application(
     db.refresh(application)
 
     return application
+
+
+@router.post(
+    "/{application_id}/check",
+    response_model=CreditApplicationResponse,
+)
+def start_checking(
+    application_id: int,
+    staff: StaffUser,
+    db: DbSession,
+):
+    """Переводит заявку в статус checking (staff)."""
+
+    application = db.get(CreditApplication, application_id)
+
+    if application is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if application.status != "submitted":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted applications can be moved to checking",
+        )
+
+    old_status = application.status
+    application.status = "checking"
+
+    record_status_change(
+        db=db,
+        application=application,
+        old_status=old_status,
+        new_status="checking",
+        comment="Заявка передана на проверку",
+    )
+
+    db.commit()
+    db.refresh(application)
+
+    return application
+
+
+@router.post(
+    "/{application_id}/request-info",
+    response_model=CreditApplicationResponse,
+)
+def request_more_info(
+    application_id: int,
+    staff: StaffUser,
+    db: DbSession,
+):
+    """Переводит заявку в статус needs_info (staff)."""
+
+    application = db.get(CreditApplication, application_id)
+
+    if application is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if application.status not in ("submitted", "checking"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted or checking applications can request more info",
+        )
+
+    old_status = application.status
+    application.status = "needs_info"
+    application.decision_comment = "Требуется дополнительная информация."
+
+    record_status_change(
+        db=db,
+        application=application,
+        old_status=old_status,
+        new_status="needs_info",
+        comment="Запрошена дополнительная информация",
+    )
+
+    db.commit()
+    db.refresh(application)
+
+    return application
+
+
+@router.post(
+    "/{application_id}/offer-alternative",
+    response_model=CreditApplicationResponse,
+)
+def offer_alternative(
+    application_id: int,
+    staff: StaffUser,
+    db: DbSession,
+):
+    """Переводит заявку в статус alternative_offer (staff)."""
+
+    application = db.get(CreditApplication, application_id)
+
+    if application is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if application.status not in ("submitted", "checking"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted or checking applications can offer alternative",
+        )
+
+    old_status = application.status
+    application.status = "alternative_offer"
+    application.decision_comment = (
+        "Предложены альтернативные условия. Сотрудник банка свяжется с вами."
+    )
+
+    record_status_change(
+        db=db,
+        application=application,
+        old_status=old_status,
+        new_status="alternative_offer",
+        comment="Предложены альтернативные условия",
+    )
+
+    db.commit()
+    db.refresh(application)
+
+    return application
