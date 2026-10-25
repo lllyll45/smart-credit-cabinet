@@ -36,13 +36,13 @@ def validate_credit_product(
 
     if product is None or not product.is_active:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Credit product not found or inactive",
         )
 
     if not product.min_amount <= amount <= product.max_amount:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Application amount is outside product limits",
         )
 
@@ -52,7 +52,7 @@ def validate_credit_product(
         <= product.max_term_months
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Application term is outside product limits",
         )
 
@@ -235,7 +235,7 @@ def submit_application(
 
     if application.credit_product_id is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Select a credit product before submitting",
         )
 
@@ -254,7 +254,7 @@ def submit_application(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
 
