@@ -1,249 +1,193 @@
 # Модель данных — Smart Credit Cabinet
 
-## 1. Назначение
+Модель данных соответствует текущей реализации. В базе **7 таблиц**:
+`users`, `credit_products`, `credit_applications`, `application_history`, `business_profiles`, `recommendations`, `recommendation_items`.
 
-Модель данных системы «Умный кредитный кабинет предпринимателя» предназначена для хранения информации о пользователях, их бизнесе, кредитных продуктах, результатах подбора предложений и кредитных заявках.
+СУБД: PostgreSQL. ORM: SQLAlchemy. Миграции: Alembic.
 
-Основная задача модели — обеспечить полный пользовательский сценарий: регистрация, заполнение профиля бизнеса, подбор подходящих кредитных продуктов, оформление заявки и отслеживание её статуса.
-
-В качестве основной СУБД используется PostgreSQL. Для взаимодействия с базой данных применяется SQLAlchemy ORM, управление изменениями схемы осуществляется с помощью Alembic.
-
-## 2. Основные сущности
-
-В системе выделяются следующие сущности:
-
-1. `User` — учётная запись пользователя.
-2. `BusinessProfile` — профиль бизнеса пользователя.
-3. `CreditProduct` — кредитный продукт, доступный в каталоге.
-4. `Recommendation` — результат подбора кредитных предложений.
-5. `RecommendationItem` — отдельный продукт в результатах подбора.
-6. `Application` — кредитная заявка пользователя.
-7. `CreditDecision` — результат обработки и демонстрационной оценки заявки.
-8. `ApplicationHistory` — история изменения статуса заявки.
-
-## 3. Описание таблиц
-
-### 3.1. User — пользователь
-
-Таблица хранит учётные записи зарегистрированных пользователей.
+## 1. users — пользователи
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `id` | UUID, PK | Уникальный идентификатор пользователя |
-| `email` | VARCHAR(255), UNIQUE, NOT NULL | Электронная почта |
-| `password_hash` | VARCHAR(255), NOT NULL | Хеш пароля |
-| `created_at` | TIMESTAMPTZ, NOT NULL | Дата и время регистрации |
-| `updated_at` | TIMESTAMPTZ, NOT NULL | Дата и время последнего изменения |
+| `id` | INTEGER, PK | Идентификатор |
+| `email` | VARCHAR(255), UNIQUE, NOT NULL | Почта |
+| `hashed_password` | VARCHAR(255), NOT NULL | Хеш пароля (Argon2) |
+| `role` | VARCHAR(20), NOT NULL | `client` / `staff` / `admin` |
+| `created_at` | TIMESTAMPTZ, NOT NULL | Дата регистрации |
 
-Ограничения:
-- Email должен быть уникальным.
-- Пароль в открытом виде не хранится.
-- Пользователь может иметь один основной профиль бизнеса и несколько кредитных заявок.
+Связи:
+- `applications` — один ко многим с `credit_applications`
+- `business_profile` — один к одному с `business_profiles` (`uselist=False`)
 
-### 3.2. BusinessProfile — профиль бизнеса
-
-Таблица содержит сведения о бизнесе пользователя, необходимые для подбора кредитных продуктов.
+## 2. credit_products — кредитные продукты
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `id` | UUID, PK | Идентификатор профиля |
-| `user_id` | UUID, FK → `users.id`, UNIQUE | Владелец профиля |
+| `id` | INTEGER, PK | Идентификатор |
+| `name` | VARCHAR(200), NOT NULL | Название |
+| `bank_name` | VARCHAR(150), NOT NULL | Банк |
+| `interest_rate` | NUMERIC(5,2), NOT NULL | Годовая ставка, % |
+| `min_amount`, `max_amount` | NUMERIC(15,2), NOT NULL | Диапазон суммы |
+| `min_term_months`, `max_term_months` | INTEGER, NOT NULL | Диапазон срока |
+| `commission_rate` | NUMERIC(5,2), NULL | Комиссия, % от суммы |
+| `commission_amount` | NUMERIC(15,2), NULL | Фиксированная комиссия |
+| `additional_conditions` | TEXT, NULL | Условия |
+| `description` | TEXT, NULL | Описание |
+| `supported_purposes` | JSONB, NOT NULL | Поддерживаемые цели (`["working_capital", ...]`) |
+| `min_business_age_months` | INTEGER, NULL | Минимальный возраст бизнеса |
+| `requires_collateral` | BOOLEAN, NOT NULL | Нужно ли обеспечение |
+| `is_active` | BOOLEAN, NOT NULL | Доступность |
+| `created_at`, `updated_at` | TIMESTAMPTZ, NOT NULL | Метки времени |
+
+Примечание: в тестах (SQLite) `JSONB` заменяется на `JSON` через `app/core/json_type.JSONType`.
+
+Связи:
+- `applications` — один ко многим с `credit_applications`
+- `recommendation_items` — один ко многим с `recommendation_items`
+
+## 3. credit_applications — кредитные заявки
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `id` | INTEGER, PK | Идентификатор |
+| `user_id` | INTEGER, FK → users.id, NOT NULL | Владелец |
+| `credit_product_id` | INTEGER, FK → credit_products.id, NULL | Выбранный продукт |
+| `amount` | NUMERIC(12,2), NOT NULL | Сумма |
+| `term_months` | INTEGER, NOT NULL | Срок |
+| `purpose` | VARCHAR(255), NOT NULL | Цель |
+| `monthly_income` | NUMERIC(12,2), NULL | Доход |
+| `employment` | VARCHAR(255), NULL | Занятость |
+| `status` | VARCHAR(50), NOT NULL | Статус заявки |
+| `comment` | TEXT, NULL | Комментарий |
+| `decision_comment` | TEXT, NULL | Комментарий к решению |
+| `preliminary_result` | VARCHAR(50), NULL | `likely_eligible` / `high_debt_burden` |
+| `monthly_payment` | NUMERIC(12,2), NULL | Платёж |
+| `total_payment` | NUMERIC(12,2), NULL | Общая сумма |
+| `overpayment` | NUMERIC(12,2), NULL | Переплата |
+| `created_at`, `updated_at` | TIMESTAMPTZ, NOT NULL | Метки времени |
+
+Связи:
+- `user` — многие к одному
+- `credit_product` — многие к одному
+- `history` — один ко многим с `application_history` (каскадное удаление)
+
+## 4. application_history — история статусов
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `id` | INTEGER, PK | Идентификатор |
+| `application_id` | INTEGER, FK → credit_applications.id, NOT NULL | Заявка |
+| `old_status` | VARCHAR(50), NULL | Предыдущий статус (`null` при создании) |
+| `new_status` | VARCHAR(50), NOT NULL | Новый статус |
+| `comment` | TEXT, NULL | Комментарий |
+| `created_at` | TIMESTAMPTZ, NOT NULL | Дата события |
+
+Пишется при: создании (`None` → `draft`), submit (`draft` → `submitted`), approve/reject/check/request-info/offer-alternative.
+
+## 5. business_profiles — профили бизнеса
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `id` | INTEGER, PK | Идентификатор |
+| `user_id` | INTEGER, FK → users.id, UNIQUE, NOT NULL | Владелец |
 | `business_name` | VARCHAR(255), NOT NULL | Название бизнеса |
-| `legal_form` | VARCHAR(20), NOT NULL | Организационная форма: ИП или ООО |
-| `industry` | VARCHAR(100) | Сфера деятельности |
-| `region` | VARCHAR(100) | Регион ведения бизнеса |
-| `business_start_date` | DATE | Дата начала деятельности |
-| `monthly_revenue` | NUMERIC(15,2) | Средняя ежемесячная выручка |
-| `created_at` | TIMESTAMPTZ, NOT NULL | Дата создания профиля |
-| `updated_at` | TIMESTAMPTZ, NOT NULL | Дата последнего изменения |
+| `legal_form` | VARCHAR(20), NOT NULL | `IP` или `OOO` |
+| `industry` | VARCHAR(100), NULL | Отрасль |
+| `region` | VARCHAR(100), NULL | Регион |
+| `business_start_date` | DATE, NULL | Дата начала |
+| `monthly_revenue` | NUMERIC(15,2), NULL | Среднемесячная выручка |
+| `created_at`, `updated_at` | TIMESTAMPTZ, NOT NULL | Метки времени |
 
-Связь с пользователем реализуется через `user_id`. Ограничение `UNIQUE` обеспечивает наличие не более одного основного профиля на пользователя.
+`UNIQUE user_id` = один профиль на пользователя.
 
-Данные профиля используются при подборе продуктов. Перед использованием система должна проверять их полноту и корректность.
-
-### 3.3. CreditProduct — кредитный продукт
-
-Таблица хранит кредитные предложения, доступные пользователям.
+## 6. recommendations — подборы предложений
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `id` | UUID, PK | Идентификатор продукта |
-| `name` | VARCHAR(255), NOT NULL | Название продукта |
-| `description` | TEXT | Описание продукта |
-| `min_amount` | NUMERIC(15,2), NOT NULL | Минимальная сумма кредита |
-| `max_amount` | NUMERIC(15,2), NOT NULL | Максимальная сумма кредита |
-| `min_term_months` | INTEGER, NOT NULL | Минимальный срок в месяцах |
-| `max_term_months` | INTEGER, NOT NULL | Максимальный срок в месяцах |
-| `interest_rate_min` | NUMERIC(5,2), NOT NULL | Минимальная годовая ставка, % |
-| `interest_rate_max` | NUMERIC(5,2), NOT NULL | Максимальная годовая ставка, % |
-| `min_business_age_months` | INTEGER | Минимальный срок существования бизнеса |
-| `supported_purposes` | JSONB, NOT NULL | Поддерживаемые цели кредитования |
-| `requires_collateral` | BOOLEAN, NOT NULL | Требуется ли обеспечение |
-| `is_active` | BOOLEAN, NOT NULL | Доступен ли продукт в каталоге |
-| `created_at` | TIMESTAMPTZ, NOT NULL | Дата создания записи |
-| `updated_at` | TIMESTAMPTZ, NOT NULL | Дата изменения записи |
+| `id` | INTEGER, PK | Идентификатор |
+| `user_id` | INTEGER, FK → users.id, NOT NULL | Пользователь |
+| `requested_amount` | NUMERIC(15,2), NOT NULL | Запрошенная сумма |
+| `term_months` | INTEGER, NOT NULL | Срок |
+| `purpose` | VARCHAR(100), NOT NULL | Цель |
+| `monthly_revenue` | NUMERIC(15,2), NULL | Выручка (для скоринга) |
+| `business_age_months` | INTEGER, NULL | Возраст бизнеса |
+| `created_at` | TIMESTAMPTZ, NOT NULL | Дата подбора |
 
-Для MVP каталог может заполняться демонстрационными данными. В дальнейшем источником сведений могут стать внешние банковские интеграции.
+Связи:
+- `items` — один ко многим с `recommendation_items` (сортировка по `match_score desc`)
 
-Ограничения:
-- `min_amount` не может превышать `max_amount`.
-- `min_term_months` не может превышать `max_term_months`.
-- Минимальная ставка не должна превышать максимальную.
-- Неактивные продукты не показываются в каталоге и не участвуют в новом подборе.
-
-### 3.4. Recommendation — результат подбора
-
-Таблица хранит запрос пользователя на подбор кредитных предложений и общие сведения о результатах.
+## 7. recommendation_items — продукты в подборе
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `id` | UUID, PK | Идентификатор подбора |
-| `user_id` | UUID, FK → `users.id`, NOT NULL | Пользователь, выполнивший подбор |
-| `requested_amount` | NUMERIC(15,2), NOT NULL | Запрашиваемая сумма |
-| `term_months` | INTEGER, NOT NULL | Желаемый срок |
-| `purpose` | VARCHAR(100), NOT NULL | Цель кредита |
-| `monthly_revenue` | NUMERIC(15,2) | Ежемесячная выручка, использованная при подборе |
-| `business_age_months` | INTEGER | Возраст бизнеса в месяцах на момент подбора |
-| `created_at` | TIMESTAMPTZ, NOT NULL | Дата и время подбора |
+| `id` | INTEGER, PK | Идентификатор |
+| `recommendation_id` | INTEGER, FK → recommendations.id, NOT NULL | Подбор |
+| `product_id` | INTEGER, FK → credit_products.id, NOT NULL | Продукт |
+| `match_score` | NUMERIC(5,2), NOT NULL | Оценка 0..100 |
+| `estimated_monthly_payment` | NUMERIC(15,2), NULL | Ожидаемый платёж |
+| `reasons` | JSONB, NOT NULL | Массив причин (`["Сумма входит в диапазон", ...]`) |
+| `created_at` | TIMESTAMPTZ, NOT NULL | Дата |
 
-Сущность позволяет сохранять историю подбора, чтобы пользователь мог вернуться к ранее полученным результатам.
+Связи:
+- `recommendation` — многие к одному
+- `product` — многие к одному
 
-### 3.5. RecommendationItem — предложение в результате подбора
+## 8. Статусы заявки
 
-Таблица содержит отдельные кредитные продукты, попавшие в результат подбора.
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | UUID, PK | Идентификатор результата |
-| `recommendation_id` | UUID, FK → `recommendations.id`, NOT NULL | Подбор, к которому относится результат |
-| `product_id` | UUID, FK → `credit_products.id`, NOT NULL | Рекомендованный продукт |
-| `match_score` | NUMERIC(5,2) | Демонстрационная оценка соответствия |
-| `estimated_monthly_payment` | NUMERIC(15,2) | Ориентировочный ежемесячный платёж |
-| `reasons` | JSONB, NOT NULL | Причины включения продукта в рекомендации |
-| `created_at` | TIMESTAMPTZ, NOT NULL | Дата создания результата |
-
-Одна запись `Recommendation` может содержать несколько записей `RecommendationItem`.
-
-`match_score` используется для сортировки предложений и не является вероятностью одобрения кредита. Ориентировочный платёж рассчитывается на основании доступных условий продукта и явно заданных допущений.
-
-### 3.6. Application — кредитная заявка
-
-Таблица хранит заявки, оформленные пользователями.
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | UUID, PK | Идентификатор заявки |
-| `user_id` | UUID, FK → `users.id`, NOT NULL | Владелец заявки |
-| `product_id` | UUID, FK → `credit_products.id`, NOT NULL | Выбранный кредитный продукт |
-| `recommendation_item_id` | UUID, FK → `recommendation_items.id` | Результат подбора, из которого оформлена заявка, если применимо |
-| `amount` | NUMERIC(15,2), NOT NULL | Запрашиваемая сумма |
-| `term_months` | INTEGER, NOT NULL | Срок кредита в месяцах |
-| `purpose` | VARCHAR(100), NOT NULL | Цель кредита |
-| `status` | VARCHAR(30), NOT NULL | Текущий статус заявки |
-| `created_at` | TIMESTAMPTZ, NOT NULL | Дата создания заявки |
-| `updated_at` | TIMESTAMPTZ, NOT NULL | Дата последнего изменения |
-| `submitted_at` | TIMESTAMPTZ | Дата отправки заявки |
-
-Владелец заявки определяется сервером на основании авторизованного пользователя. Клиентское приложение не должно самостоятельно назначать `user_id`.
-
-Заявка может быть создана как черновик, отредактирована до отправки и затем передана на обработку.
-
-### 3.7. CreditDecision — результат оценки заявки
-
-Таблица хранит результат демонстрационной обработки заявки.
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | UUID, PK | Идентификатор результата |
-| `application_id` | UUID, FK → `applications.id`, NOT NULL | Связанная заявка |
-| `result` | VARCHAR(30), NOT NULL | Результат оценки |
-| `score` | NUMERIC(5,2) | Демонстрационная оценка |
-| `reason` | TEXT | Объяснение результата |
-| `alternative_product_id` | UUID, FK → `credit_products.id` | Альтернативный продукт, если предложен |
-| `created_at` | TIMESTAMPTZ, NOT NULL | Дата формирования результата |
-
-В MVP решение формируется программными правилами и не является реальным банковским решением. Если система должна сохранять несколько результатов повторной оценки, связь с заявкой допускает несколько записей `CreditDecision`.
-
-### 3.8. ApplicationHistory — история заявки
-
-Таблица фиксирует изменения статусов и важные события обработки заявки.
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | UUID, PK | Идентификатор события |
-| `application_id` | UUID, FK → `applications.id`, NOT NULL | Связанная заявка |
-| `old_status` | VARCHAR(30) | Предыдущий статус |
-| `new_status` | VARCHAR(30), NOT NULL | Новый статус |
-| `comment` | TEXT | Комментарий к изменению |
-| `created_at` | TIMESTAMPTZ, NOT NULL | Дата и время события |
-
-История нужна для отображения пользователю этапов обработки и диагностики ошибок. Записи истории создаются сервером при изменении статуса, а не напрямую клиентским приложением.
-
-## 4. Статусы заявки
-
-Для поля `Application.status` используется следующий набор значений:
-
-| Статус | Описание |
+| Статус | Значение |
 |---|---|
-| `DRAFT` | Черновик, доступный для редактирования |
-| `SUBMITTED` | Заявка отправлена |
-| `CHECKING` | Выполняются демонстрационные проверки |
-| `NEEDS_INFO` | Требуется дополнительная информация |
-| `APPROVED` | Положительный результат демонстрационной оценки |
-| `REJECTED` | Отрицательный результат демонстрационной оценки |
-| `ALTERNATIVE_OFFER` | Предложен альтернативный кредитный продукт |
+| `draft` | Черновик, доступен для редактирования |
+| `submitted` | Отправлена, только чтение |
+| `checking` | На проверке (staff) |
+| `needs_info` | Требуется дополнительная информация (staff) |
+| `alternative_offer` | Предложены альтернативные условия (staff) |
+| `approved` | Одобрена (staff) |
+| `rejected` | Отклонена (staff) |
 
-Изменение статусов контролируется серверной бизнес-логикой. Например, редактирование допускается только для черновика, а отправка возможна только после проверки обязательных полей.
+`preliminary_result`:
+- `likely_eligible` — платёж ≤ 40% дохода
+- `high_debt_burden` — платёж > 40% дохода
 
-## 5. Связи между сущностями
+Это **предварительная** оценка, не финальное решение.
 
-Основные связи модели:
+## 9. Формула `match_score`
 
-- `User` → `BusinessProfile`: один к нулю или одному.
-- `User` → `Recommendation`: один ко многим.
-- `Recommendation` → `RecommendationItem`: один ко многим.
-- `CreditProduct` → `RecommendationItem`: один ко многим.
-- `User` → `Application`: один ко многим.
-- `CreditProduct` → `Application`: один ко многим.
-- `Application` → `CreditDecision`: один ко многим.
-- `Application` → `ApplicationHistory`: один ко многим.
+Взвешенная оценка 0..100:
+- сумма в диапазоне — 40%
+- срок в диапазоне — 30%
+- доход (платёж / доход) — 20%: `≤40%` → 1.0, `40–60%` → 0.5, `>60%` → 0
+- возраст бизнеса ≥ минимума — 10%
 
-Связь `Application` с `RecommendationItem` необязательна, поскольку пользователь может оформить заявку непосредственно из каталога, не выполняя предварительный подбор.
+Если продукт не подходит по сумме, сроку, цели или возрасту — он **отсеивается** (не попадает в `recommendation_items`).
 
-## 6. Ограничения и правила целостности
+## 10. Ограничения
 
-Для обеспечения корректности данных применяются следующие правила:
+- Email уникален
+- Сумма и срок положительны
+- Продукт существует и активен
+- Пользователь видит только свои заявки / профиль / подборы
+- Пароли хранятся в виде хеша
+- Деньги — в `NUMERIC`, не `float`
 
-1. Все первичные ключи имеют уникальные значения.
-2. Внешние ключи обеспечивают целостность связей между таблицами.
-3. Email пользователя уникален.
-4. Сумма кредита должна быть положительной.
-5. Срок кредита должен быть положительным целым числом.
-6. Выбранный продукт должен существовать и быть доступным для оформления заявки.
-7. Пользователь может просматривать и изменять только собственные профиль, результаты подбора и заявки.
-8. Статусы заявок изменяются только через серверную бизнес-логику.
-9. Пароли не хранятся в открытом виде.
-10. Денежные значения хранятся в `NUMERIC`, а не в типах с плавающей точкой.
+## 11. Миграции Alembic
 
-## 7. Индексы
+| Ревизия | Что делает |
+|---|---|
+| `711a25141bf5` | Создание `users` |
+| `d2eefc340c25` | Создание `credit_applications` |
+| `61ffaf4ab915` | Создание `credit_products` |
+| `a654ae10dd13` | Связь заявок с продуктами |
+| `958ca098cb81` | `credit_product_id` в заявках |
+| `4661d4878f2d` | Поля решения и платежей |
+| `4544c5ffb92f` | Роль пользователя |
+| `3fb1579ae565` | Предварительный результат |
+| `53d00dceb9da` | Дополнение предварительного результата |
+| `a1b2c3d4e5f6` | `application_history` |
+| `b2c3d4e5f6a7` | `business_profiles` |
+| `c3d4e5f6a7b8` | `recommendations`, `recommendation_items` + новые поля `credit_products` |
 
-Для часто используемых запросов рекомендуется создать индексы:
+Применение: `alembic upgrade head`. Создание новой: `alembic revision --autogenerate -m "..."`.
 
-- `users.email` — поиск пользователя при входе; уникальный индекс создаётся ограничением `UNIQUE`.
-- `business_profiles.user_id` — поиск профиля пользователя.
-- `recommendations.user_id` — получение истории подбора.
-- `recommendation_items.recommendation_id` — получение результатов подбора.
-- `applications.user_id` — получение заявок пользователя.
-- `applications.status` — фильтрация по статусу.
-- `application_history.application_id` — получение истории заявки.
-- `credit_decisions.application_id` — получение результатов оценки.
+## 12. Не реализовано (в отличие от старой версии документа)
 
-## 8. Реализация в проекте
-
-Модели данных реализуются с помощью SQLAlchemy ORM. Для каждой сущности создаётся соответствующая модель в каталоге `backend/app/models/`. Изменения схемы базы данных оформляются миграциями Alembic.
-
-Схемы запросов и ответов API определяются отдельно, например, с помощью Pydantic в каталоге `backend/app/schemas/`. Это позволяет отделить структуру хранения данных от публичного API.
-
-Начальное наполнение каталога кредитных продуктов выполняется демонстрационными данными. Внешние банковские интеграции в рамках MVP не являются обязательными.
-
-Модель предназначена для демонстрационного MVP. Перед использованием в реальном финансовом сервисе потребуется дополнительная проработка требований к безопасности, персональным данным, аудиту, хранению документов и интеграциям.
+Сущности `Verification`, `CreditDecision` — в планах, в коде отсутствуют. Решения по заявке (`approved`/`rejected`) хранятся в `credit_applications.status` и `credit_applications.decision_comment`, отдельной таблицы нет.
