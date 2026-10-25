@@ -1,0 +1,293 @@
+
+import { useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import Input from '../../components/ui/Input'
+import Button from '../../components/ui/Button'
+import { api } from '../../services/apiClients'
+
+type CreditProduct = {
+  id: number
+  name: string
+  bank_name: string
+  min_amount: number | string
+  max_amount: number | string
+  min_term_months: number
+  max_term_months: number
+  is_active: boolean
+}
+
+export type ApplicationFormValues = {
+  credit_product_id: number
+  amount: number
+  term_months: number
+  purpose: string
+  monthly_income: number
+  employment: string
+}
+
+type ApplicationFormProps = {
+  productId?: number
+  onSubmit: (values: ApplicationFormValues) => Promise<void>
+}
+
+export default function ApplicationForm({
+  productId,
+  onSubmit,
+}: ApplicationFormProps) {
+  const [searchParams] = useSearchParams()
+
+  const queryProductId = Number(searchParams.get('productId'))
+
+const initialProductId =
+  productId ?? (queryProductId > 0 ? queryProductId : undefined)
+  const [products, setProducts] = useState<CreditProduct[]>([])
+  const [selectedProductId, setSelectedProductId] = useState(
+    initialProductId ? String(initialProductId) : '',
+  )
+  const [amount, setAmount] = useState('500000')
+  const [term, setTerm] = useState('36')
+  const [purpose, setPurpose] = useState('')
+  const [monthlyIncome, setMonthlyIncome] = useState('')
+  const [employment, setEmployment] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [loadingProducts, setLoadingProducts] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadProducts() {
+      try {
+        const response = await api.get<CreditProduct[]>('/products')
+        if (cancelled) return
+
+        const activeProducts = response.data.filter(
+          (product) => product.is_active !== false,
+        )
+
+        setProducts(activeProducts)
+
+        if (
+          initialProductId &&
+          activeProducts.some((product) => product.id === initialProductId)
+        ) {
+          setSelectedProductId(String(initialProductId))
+        } else if (activeProducts.length > 0 && !selectedProductId) {
+          setSelectedProductId(String(activeProducts[0].id))
+        }
+      } catch {
+        if (!cancelled) {
+          setError('Не удалось загрузить кредитные продукты. Обновите страницу.')
+        }
+      } finally {
+        if (!cancelled) setLoadingProducts(false)
+      }
+    }
+
+    void loadProducts()
+
+    return () => {
+      cancelled = true
+    }
+  }, [initialProductId, selectedProductId]) // Загружаем список продуктов один раз
+
+  const selectedProduct = products.find(
+    (product) => product.id === Number(selectedProductId),
+  )
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+
+    const parsedProductId = Number(selectedProductId)
+    const parsedAmount = Number(amount)
+    const parsedTerm = Number(term)
+    const parsedIncome = Number(monthlyIncome)
+
+    if (!selectedProduct) {
+      setError('Выберите кредитный продукт.')
+      return
+    }
+
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setError('Введите корректную сумму кредита.')
+      return
+    }
+
+    if (
+      parsedAmount < Number(selectedProduct.min_amount) ||
+      parsedAmount > Number(selectedProduct.max_amount)
+    ) {
+      setError(
+        `Сумма должна быть от ${selectedProduct.min_amount} до ${selectedProduct.max_amount} ₽.`,
+      )
+      return
+    }
+
+    if (
+      !Number.isInteger(parsedTerm) ||
+      parsedTerm < selectedProduct.min_term_months ||
+      parsedTerm > selectedProduct.max_term_months
+    ) {
+      setError(
+        `Срок должен быть от ${selectedProduct.min_term_months} до ${selectedProduct.max_term_months} месяцев.`,
+      )
+      return
+    }
+
+    if (!Number.isFinite(parsedIncome) || parsedIncome <= 0) {
+      setError('Укажите ежемесячный доход.')
+      return
+    }
+
+    if (!purpose.trim()) {
+      setError('Укажите цель кредита.')
+      return
+    }
+
+    if (!employment) {
+      setError('Выберите тип занятости.')
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      await onSubmit({
+        credit_product_id: parsedProductId,
+        amount: parsedAmount,
+        term_months: parsedTerm,
+        purpose: purpose.trim(),
+        monthly_income: parsedIncome,
+        employment,
+      })
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Не удалось создать заявку.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form className="content-card" onSubmit={handleSubmit}>
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Данные заёмщика</p>
+          <h2>Параметры кредитной заявки</h2>
+        </div>
+      </div>
+
+      {loadingProducts ? (
+        <p>Загружаем кредитные продукты...</p>
+      ) : products.length === 0 ? (
+        <p className="form-error">
+          Нет доступных кредитных продуктов. Проверьте подключение к API.
+        </p>
+      ) : (
+        <>
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="credit-product">Кредитный продукт</label>
+              <select
+                id="credit-product"
+                className="input"
+                value={selectedProductId}
+                onChange={(event) => setSelectedProductId(event.target.value)}
+                required
+              >
+                <option value="">Выберите продукт</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.bank_name} — {product.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <Input
+              label="Сумма кредита, ₽"
+              type="number"
+              min={selectedProduct?.min_amount ?? 1}
+              max={selectedProduct?.max_amount}
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              required
+            />
+
+            <Input
+              label="Срок кредита, месяцев"
+              type="number"
+              min={selectedProduct?.min_term_months ?? 1}
+              max={selectedProduct?.max_term_months ?? 600}
+              value={term}
+              onChange={(event) => setTerm(event.target.value)}
+              required
+            />
+
+            <Input
+              label="Ежемесячный доход, ₽"
+              type="number"
+              min="1"
+              value={monthlyIncome}
+              onChange={(event) => setMonthlyIncome(event.target.value)}
+              required
+            />
+
+            <div className="form-field">
+              <label htmlFor="employment">Тип занятости</label>
+              <select
+                id="employment"
+                className="input"
+                value={employment}
+                onChange={(event) => setEmployment(event.target.value)}
+                required
+              >
+                <option value="">Выберите тип занятости</option>
+                <option value="employed">Работа по найму</option>
+                <option value="self_employed">Самозанятый</option>
+                <option value="entrepreneur">Индивидуальный предприниматель</option>
+                <option value="unemployed">Не работаю</option>
+              </select>
+            </div>
+
+            <div className="form-field">
+              <label htmlFor="purpose">Цель кредита</label>
+              <textarea
+                id="purpose"
+                className="input"
+                rows={3}
+                value={purpose}
+                onChange={(event) => setPurpose(event.target.value)}
+                placeholder="Например, пополнение оборотных средств"
+                required
+              />
+            </div>
+          </div>
+
+          {selectedProduct && (
+            <p className="notice">
+              Доступная сумма: {selectedProduct.min_amount}–{selectedProduct.max_amount} ₽.
+              Срок: {selectedProduct.min_term_months}–{selectedProduct.max_term_months} месяцев.
+            </p>
+          )}
+
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Создание заявки...' : 'Создать заявку'}
+          </Button>
+        </>
+      )}
+
+      {error && products.length === 0 && !loadingProducts && (
+        <p className="form-error" role="alert">{error}</p>
+      )}
+    </form>
+  )
+}
