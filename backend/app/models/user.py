@@ -1,4 +1,3 @@
-
 """User model."""
 
 from datetime import datetime
@@ -47,5 +46,12 @@ class User(Base):
     applications = relationship(
         "CreditApplication",
         back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    business_profile = relationship(
+        "BusinessProfile",
+        back_populates="user",
+        uselist=False,
         cascade="all, delete-orphan",
     )
