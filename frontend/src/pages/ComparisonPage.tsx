@@ -1,31 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import PageLayout from '../components/layout/PageLayout'
-import { api} from '../services/apiClients'
+import { compareProducts } from '../features/calculator/calculatorApi'
+import { getErrorMessage } from '../utils/getErrorMessage'
+import type {
+  CreditCalculation,
+  CreditComparison,
+} from '../types/comon'
 
-type ComparisonProduct = {
-  product_id: number
-  product_name: string
-  bank_name: string
-  interest_rate: string
-  amount: string
-  term_months: number
-  monthly_payment: string
-  total_payment: string
-  overpayment: string
-  commission: string
-}
-
-type ComparisonResponse = {
-  amount: string
-  term_months: number
-  products: ComparisonProduct[]
-}
-
-function money(value: string | number | undefined) {
+function money(value: string | number | undefined | null) {
   const number = Number(value)
   if (!Number.isFinite(number)) return '—'
-
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency: 'RUB',
@@ -36,7 +21,7 @@ function money(value: string | number | undefined) {
 export default function ComparisonPage() {
   const [amount, setAmount] = useState('1000000')
   const [term, setTerm] = useState('36')
-  const [result, setResult] = useState<ComparisonResponse | null>(null)
+  const [result, setResult] = useState<CreditComparison | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -59,36 +44,40 @@ export default function ComparisonPage() {
     }
 
     setLoading(true)
-
     try {
-      const response = await api.post<ComparisonResponse>(
-        '/calculator/compare',
-        {
-          amount: amountValue,
-          term_months: termValue,
-        },
-      )
+      const data = await compareProducts({
+        amount: amountValue,
+        term_months: termValue,
+      })
+      setResult(data)
 
-      setResult(response.data)
-
-      if (response.data.products.length === 0) {
-        setError('Для указанных параметров подходящие продукты не найдены.')
+      if (!data.products || data.products.length === 0) {
+        setError(
+          'Для указанных параметров подходящие продукты не найдены.',
+        )
       }
-    } catch {
-      setError(
-        'Не удалось сравнить предложения. Проверьте подключение к серверу и параметры кредита.',
-      )
+    } catch (err) {
+      setError(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
   }
+
+  const sorted: CreditCalculation[] = result
+    ? [...result.products].sort(
+        (a, b) => Number(a.total_payment) - Number(b.total_payment),
+      )
+    : []
 
   return (
     <PageLayout>
       <section className="page-heading">
         <p className="eyebrow">Подбор финансирования</p>
         <h1>Сравнение кредитов</h1>
-        <p>Сравните ежемесячный платёж, переплату и комиссию по предложениям банков.</p>
+        <p>
+          Сравните ежемесячный платёж, переплату и комиссию по
+          предложениям банков.
+        </p>
       </section>
 
       <section className="content-card">
@@ -123,74 +112,87 @@ export default function ComparisonPage() {
             </div>
           </div>
 
-          <button className="primary-button" type="submit" disabled={loading}>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={loading}
+          >
             {loading ? 'Сравниваем…' : 'Сравнить предложения'}
           </button>
         </form>
 
-        {error && <p className="form-error" role="alert">{error}</p>}
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
       </section>
 
-      {result && result.products.length > 0 && (
+      {result && sorted.length > 0 && (
         <section className="section-block">
           <div className="section-heading">
             <div>
               <p className="eyebrow">Результаты расчёта</p>
               <h2>Доступные предложения</h2>
             </div>
-            <span>{result.products.length} предложений</span>
+            <span>{sorted.length} предложений</span>
           </div>
 
           <div className="product-grid">
-            {[...result.products]
-              .sort(
-                (a, b) =>
-                  Number(a.total_payment) - Number(b.total_payment),
-              )
-              .map((product, index) => (
-                <article className="content-card product-card" key={product.product_id}>
-                  <p className="eyebrow">
-                    {index === 0 ? 'Наименьшая общая выплата' : product.bank_name}
+            {sorted.map((product, index) => (
+              <article
+                className="content-card product-card"
+                key={product.product_id}
+              >
+                <p className="eyebrow">
+                  {index === 0
+                    ? 'Наименьшая общая выплата'
+                    : product.bank_name}
+                </p>
+                <h3>{product.product_name}</h3>
+                <p>{product.bank_name}</p>
+
+                <div className="product-rate">
+                  {product.interest_rate}% годовых
+                </div>
+
+                <div className="details-list">
+                  <div>
+                    <span>Ежемесячный платёж</span>
+                    <strong>{money(product.monthly_payment)}</strong>
+                  </div>
+                  <div>
+                    <span>Общая выплата</span>
+                    <strong>{money(product.total_payment)}</strong>
+                  </div>
+                  <div>
+                    <span>Переплата</span>
+                    <strong>{money(product.overpayment)}</strong>
+                  </div>
+                  <div>
+                    <span>Комиссия</span>
+                    <strong>{money(product.commission)}</strong>
+                  </div>
+                  <div>
+                    <span>Срок</span>
+                    <strong>{product.term_months} мес.</strong>
+                  </div>
+                </div>
+
+                {product.disclaimer && (
+                  <p className="product-conditions">
+                    {product.disclaimer}
                   </p>
+                )}
 
-                  <h3>{product.product_name}</h3>
-                  <p>{product.bank_name}</p>
-
-                  <div className="product-rate">
-                    {product.interest_rate}% годовых
-                  </div>
-
-                  <div className="details-list">
-                    <div>
-                      <span>Ежемесячный платёж</span>
-                      <strong>{money(product.monthly_payment)}</strong>
-                    </div>
-                    <div>
-                      <span>Общая выплата</span>
-                      <strong>{money(product.total_payment)}</strong>
-                    </div>
-                    <div>
-                      <span>Переплата</span>
-                      <strong>{money(product.overpayment)}</strong>
-                    </div>
-                    <div>
-                      <span>Комиссия</span>
-                      <strong>{money(product.commission)}</strong>
-                    </div>
-                    <div>
-                      <span>Срок</span>
-                      <strong>{product.term_months} мес.</strong>
-                    </div>
-                  </div>
-
-                  <Link
-                    className="primary-button full-button"
-                    to={`/applications/new?productId=${product.product_id}`}
-                  >
-                    Подать заявку
-                  </Link>
-                </article>
-              ))}
+                <Link
+                  className="primary-button full-button"
+                  to={`/applications/new?productId=${product.product_id}`}
+                >
+                  Подать заявку
+                </Link>
+              </article>
+            ))}
           </div>
         </section>
       )}

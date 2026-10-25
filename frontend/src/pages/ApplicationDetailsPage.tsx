@@ -5,66 +5,24 @@ import Loader from '../components/ui/Loader'
 import Button from '../components/ui/Button'
 import { formatCurrency } from '../utils/formatCurrency'
 import { api } from '../services/apiClients'
-
-type ApplicationDetails = {
-  id: number
-  user_id?: number
-  credit_product_id?: number
-  amount?: string | number | null
-  comment?: string | null
-  created_at?: string | null
-  decision_comment?: string | null
-  employment?: string | null
-  monthly_income?: string | number | null
-  monthly_payment?: string | number | null
-  overpayment?: string | number | null
-  purpose?: string | null
-  status?: string | null
-  term_months?: number | null
-  total_payment?: string | number | null
-  updated_at?: string | null
-}
+import {
+  statusClass,
+  statusLabel,
+} from '../features/applications/statuses'
+import type {
+  Application,
+  ApplicationHistoryEntry,
+} from '../types/comon'
 
 function formatMoney(value?: string | number | null) {
   if (value === null || value === undefined || value === '') {
     return 'Не указано'
   }
-
   return formatCurrency(Number(value))
 }
 
-function getStatusLabel(status?: string) {
-  const labels: Record<string, string> = {
-    draft: 'Черновик',
-    pending: 'На рассмотрении',
-    submitted: 'Отправлена',
-    approved: 'Одобрена',
-    rejected: 'Отклонена',
-    cancelled: 'Отменена',
-  }
-
-  return labels[status?.toLowerCase() ?? ''] ?? status ?? 'Не указан'
-}
-
-function getStatusClass(status?: string) {
-  const normalized = status?.trim().toLowerCase()
-
-  const classes: Record<string, string> = {
-    draft: 'status-draft',
-    pending: 'status-pending',
-    submitted: 'status-submitted',
-    approved: 'status-approved',
-    rejected: 'status-rejected',
-    cancelled: 'status-rejected',
-  }
-
-  return classes[normalized ?? ''] ?? 'status-unknown'
-}
-
-
 function formatEmployment(value?: string | null) {
   if (!value) return 'Не указано'
-
   const labels: Record<string, string> = {
     employed: 'Работа по найму',
     self_employed: 'Самозанятый',
@@ -73,17 +31,13 @@ function formatEmployment(value?: string | null) {
     student: 'Студент',
     retired: 'Пенсионер',
   }
-
   return labels[value.toLowerCase()] ?? value
 }
 
 function formatDateTime(value?: string | null) {
   if (!value) return 'Не указано'
-
   const date = new Date(value)
-
   if (Number.isNaN(date.getTime())) return value
-
   return new Intl.DateTimeFormat('ru-RU', {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -92,32 +46,56 @@ function formatDateTime(value?: string | null) {
 
 export default function ApplicationDetailsPage() {
   const { id } = useParams()
-  const [item, setItem] = useState<ApplicationDetails | null>(null)
+  const [item, setItem] = useState<Application | null>(null)
+  const [history, setHistory] = useState<ApplicationHistoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  async function loadApplication() {
-    const { data } = await api.get<ApplicationDetails>(
-      `/applications/${id}`,
-    )
+  async function loadAll() {
+    if (!id) return
+    const { data } = await api.get<Application>(`/applications/${id}`)
     setItem(data)
+
+    try {
+      const hist = await api.get<ApplicationHistoryEntry[]>(
+        `/applications/${id}/history`,
+      )
+      setHistory(Array.isArray(hist.data) ? hist.data : [])
+    } catch {
+      setHistory([])
+    }
   }
 
   useEffect(() => {
     let active = true
 
-    api.get<ApplicationDetails>(`/applications/${id}`)
-      .then(({ data }) => {
-        if (active) setItem(data)
-      })
-      .catch(() => {
-        if (active) setError('Не удалось загрузить заявку.')
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+    async function load() {
+      if (!id) {
+        setLoading(false)
+        return
+      }
+      try {
+        const { data } = await api.get<Application>(`/applications/${id}`)
+        if (!active) return
+        setItem(data)
 
+        try {
+          const hist = await api.get<ApplicationHistoryEntry[]>(
+            `/applications/${id}/history`,
+          )
+          if (active) setHistory(Array.isArray(hist.data) ? hist.data : [])
+        } catch {
+          if (active) setHistory([])
+        }
+      } catch {
+        if (active) setError('Не удалось загрузить заявку.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    void load()
     return () => {
       active = false
     }
@@ -126,12 +104,13 @@ export default function ApplicationDetailsPage() {
   async function submitApplication() {
     setSubmitting(true)
     setError('')
-
     try {
       await api.post(`/applications/${id}/submit`)
-      await loadApplication()
+      await loadAll()
     } catch {
-      setError('Не удалось отправить заявку. Проверьте поддержку этого действия на сервере.')
+      setError(
+        'Не удалось отправить заявку. Проверьте поддержку этого действия на сервере.',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -162,14 +141,13 @@ export default function ApplicationDetailsPage() {
               <p>Информация о заявке, её параметрах и решении по ней.</p>
             </div>
 
-            <span className={`status-pill ${getStatusClass(item.status)}`}>
-              {getStatusLabel(item.status)}
+            <span className={`status-pill ${statusClass(item.status)}`}>
+              {statusLabel(item.status)}
             </span>
           </div>
 
           <section className="content-card application-details-card">
             <h2>Параметры кредита</h2>
-
             <div className="details-list">
               <div>
                 <span>Сумма кредита</span>
@@ -187,16 +165,23 @@ export default function ApplicationDetailsPage() {
                 <span>Цель кредита</span>
                 <strong>{item.purpose || 'Не указана'}</strong>
               </div>
+              <div>
+                <span>Продукт</span>
+                <strong>#{item.credit_product_id}</strong>
+              </div>
             </div>
           </section>
 
           <section className="content-card application-details-card">
             <h2>Финансовая информация</h2>
-
             <div className="details-list">
               <div>
                 <span>Ежемесячный доход</span>
                 <strong>{formatMoney(item.monthly_income)}</strong>
+              </div>
+              <div>
+                <span>Предварительный платёж</span>
+                <strong>{formatMoney(item.preliminary_result)}</strong>
               </div>
               <div>
                 <span>Ежемесячный платёж</span>
@@ -219,13 +204,14 @@ export default function ApplicationDetailsPage() {
 
           <section className="content-card application-details-card">
             <h2>Решение по заявке</h2>
-
             <div className="details-list">
               <div>
                 <span>Статус</span>
                 <strong>
-                  <span className={`status-pill ${getStatusClass(item.status)}`}>
-                    {getStatusLabel(item.status)}
+                  <span
+                    className={`status-pill ${statusClass(item.status)}`}
+                  >
+                    {statusLabel(item.status)}
                   </span>
                 </strong>
               </div>
@@ -234,7 +220,8 @@ export default function ApplicationDetailsPage() {
             <div className="application-note">
               <strong>Комментарий по решению</strong>
               <p>
-                {item.decision_comment || 'Комментарий по решению отсутствует.'}
+                {item.decision_comment ||
+                  'Комментарий по решению отсутствует.'}
               </p>
             </div>
 
@@ -245,8 +232,29 @@ export default function ApplicationDetailsPage() {
           </section>
 
           <section className="content-card application-details-card">
-            <h2>Сведения о заявке</h2>
+            <h2>История статусов</h2>
+            {history.length === 0 ? (
+              <p>История пуста.</p>
+            ) : (
+              <div className="history-list">
+                {history.map((h) => (
+                  <div className="history-row" key={h.id}>
+                    <span>{formatDateTime(h.created_at)}</span>
+                    <span className="transition">
+                      {h.old_status
+                        ? statusLabel(h.old_status)
+                        : '—'}{' '}
+                      → {statusLabel(h.new_status)}
+                    </span>
+                    <span className="comment">{h.comment || ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
+          <section className="content-card application-details-card">
+            <h2>Сведения о заявке</h2>
             <div className="details-list">
               <div>
                 <span>Дата создания</span>
@@ -259,7 +267,7 @@ export default function ApplicationDetailsPage() {
             </div>
           </section>
 
-          {item.status?.trim().toLowerCase() === 'draft' && (
+          {item.status === 'draft' && (
             <div className="application-actions">
               <Button onClick={submitApplication} disabled={submitting}>
                 {submitting ? 'Отправляем...' : 'Отправить заявку'}

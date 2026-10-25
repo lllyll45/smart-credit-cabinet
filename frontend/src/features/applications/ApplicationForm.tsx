@@ -1,29 +1,11 @@
-
 import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Input from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
 import { api } from '../../services/apiClients'
+import type { ApplicationCreate, CreditProduct } from '../../types/comon'
 
-type CreditProduct = {
-  id: number
-  name: string
-  bank_name: string
-  min_amount: number | string
-  max_amount: number | string
-  min_term_months: number
-  max_term_months: number
-  is_active: boolean
-}
-
-export type ApplicationFormValues = {
-  credit_product_id: number
-  amount: number
-  term_months: number
-  purpose: string
-  monthly_income: number
-  employment: string
-}
+export type ApplicationFormValues = ApplicationCreate
 
 type ApplicationFormProps = {
   productId?: number
@@ -37,9 +19,9 @@ export default function ApplicationForm({
   const [searchParams] = useSearchParams()
 
   const queryProductId = Number(searchParams.get('productId'))
+  const initialProductId =
+    productId ?? (queryProductId > 0 ? queryProductId : undefined)
 
-const initialProductId =
-  productId ?? (queryProductId > 0 ? queryProductId : undefined)
   const [products, setProducts] = useState<CreditProduct[]>([])
   const [selectedProductId, setSelectedProductId] = useState(
     initialProductId ? String(initialProductId) : '',
@@ -58,26 +40,26 @@ const initialProductId =
 
     async function loadProducts() {
       try {
-        const response = await api.get<CreditProduct[]>('/products')
+        const { data } = await api.get<CreditProduct[]>('/products')
         if (cancelled) return
 
-        const activeProducts = response.data.filter(
-          (product) => product.is_active !== false,
-        )
-
+        const activeProducts = data.filter((p) => p.is_active !== false)
         setProducts(activeProducts)
-
-        if (
-          initialProductId &&
-          activeProducts.some((product) => product.id === initialProductId)
-        ) {
-          setSelectedProductId(String(initialProductId))
-        } else if (activeProducts.length > 0 && !selectedProductId) {
-          setSelectedProductId(String(activeProducts[0].id))
-        }
+        setSelectedProductId((prev) => {
+          if (
+            initialProductId &&
+            activeProducts.some((p) => p.id === initialProductId)
+          ) {
+            return String(initialProductId)
+          }
+          if (prev) return prev
+          return activeProducts[0] ? String(activeProducts[0].id) : ''
+        })
       } catch {
         if (!cancelled) {
-          setError('Не удалось загрузить кредитные продукты. Обновите страницу.')
+          setError(
+            'Не удалось загрузить кредитные продукты. Обновите страницу.',
+          )
         }
       } finally {
         if (!cancelled) setLoadingProducts(false)
@@ -89,10 +71,10 @@ const initialProductId =
     return () => {
       cancelled = true
     }
-  }, [initialProductId, selectedProductId]) // Загружаем список продуктов один раз
+  }, [initialProductId])
 
   const selectedProduct = products.find(
-    (product) => product.id === Number(selectedProductId),
+    (p) => p.id === Number(selectedProductId),
   )
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -268,8 +250,9 @@ const initialProductId =
 
           {selectedProduct && (
             <p className="notice">
-              Доступная сумма: {selectedProduct.min_amount}–{selectedProduct.max_amount} ₽.
-              Срок: {selectedProduct.min_term_months}–{selectedProduct.max_term_months} месяцев.
+              Доступная сумма: {selectedProduct.min_amount}–
+              {selectedProduct.max_amount} ₽. Срок: {selectedProduct.min_term_months}–
+              {selectedProduct.max_term_months} месяцев.
             </p>
           )}
 
@@ -283,10 +266,6 @@ const initialProductId =
             {submitting ? 'Создание заявки...' : 'Создать заявку'}
           </Button>
         </>
-      )}
-
-      {error && products.length === 0 && !loadingProducts && (
-        <p className="form-error" role="alert">{error}</p>
       )}
     </form>
   )
