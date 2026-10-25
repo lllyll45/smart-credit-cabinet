@@ -1,13 +1,17 @@
+
+"""Credit application API endpoints."""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.auth import CurrentUser
+from app.api.auth import CurrentUser, StaffUser
 from app.core.database import get_db
 from app.models.credit_application import CreditApplication
 from app.models.credit_product import CreditProduct
+from app.schemas.application_decision import ApplicationRejection
 from app.schemas.credit_application import (
     CreditApplicationCreate,
     CreditApplicationResponse,
@@ -30,7 +34,7 @@ def validate_credit_product(
     amount,
     term_months: int,
 ) -> CreditProduct:
-    """Проверяет доступность кредитного продукта и его ограничения."""
+    """Validate product availability and its limits."""
 
     product = db.get(CreditProduct, product_id)
 
@@ -69,15 +73,14 @@ def create_application(
     user: CurrentUser,
     db: DbSession,
 ):
-    """Создаёт черновик кредитной заявки."""
+    """Create a draft credit application."""
 
-    if data.credit_product_id is not None:
-        validate_credit_product(
-            db=db,
-            product_id=data.credit_product_id,
-            amount=data.amount,
-            term_months=data.term_months,
-        )
+    validate_credit_product(
+        db=db,
+        product_id=data.credit_product_id,
+        amount=data.amount,
+        term_months=data.term_months,
+    )
 
     application = CreditApplication(
         user_id=user.id,
@@ -105,7 +108,7 @@ def list_applications(
     user: CurrentUser,
     db: DbSession,
 ):
-    """Возвращает заявки текущего пользователя."""
+    """Return applications belonging to the current user."""
 
     applications = db.scalars(
         select(CreditApplication)
@@ -117,6 +120,22 @@ def list_applications(
 
 
 @router.get(
+    "/staff",
+    response_model=list[CreditApplicationResponse],
+)
+def list_staff_applications(
+    staff: StaffUser,
+    db: DbSession,
+):
+    """Return all applications for bank staff."""
+
+    return db.scalars(
+        select(CreditApplication)
+        .order_by(CreditApplication.id.desc())
+    ).all()
+
+
+@router.get(
     "/{application_id}",
     response_model=CreditApplicationResponse,
 )
@@ -125,7 +144,7 @@ def get_application(
     user: CurrentUser,
     db: DbSession,
 ):
-    """Возвращает конкретную заявку текущего пользователя."""
+    """Return a specific application belonging to the current user."""
 
     application = db.scalar(
         select(CreditApplication).where(
@@ -153,7 +172,7 @@ def update_application(
     user: CurrentUser,
     db: DbSession,
 ):
-    """Изменяет заявку, пока она находится в статусе черновика."""
+    """Update an application while it is a draft."""
 
     application = db.scalar(
         select(CreditApplication).where(
@@ -212,7 +231,7 @@ def submit_application(
     user: CurrentUser,
     db: DbSession,
 ):
-    """Отправляет заявку и автоматически рассчитывает решение."""
+    """Calculate payments and submit the application for staff review."""
 
     application = db.scalar(
         select(CreditApplication).where(
@@ -247,7 +266,7 @@ def submit_application(
     )
 
     try:
-        application = process_credit_application(
+        return process_credit_application(
             db=db,
             application=application,
         )
@@ -257,5 +276,80 @@ def submit_application(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/{application_id}/approve",
+    response_model=CreditApplicationResponse,
+)
+def approve_application(
+    application_id: int,
+    staff: StaffUser,
+    db: DbSession,
+):
+    """Approve an application submitted for staff review."""
+
+    application = db.get(CreditApplication, application_id)
+
+    if application is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if application.status != "submitted":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted applications can be approved",
+        )
+
+    application.status = "approved"
+    application.decision_comment = "Заявка одобрена сотрудником банка."
+
+    db.commit()
+    db.refresh(application)
+
+    return application
+
+
+@router.post(
+    "/{application_id}/reject",
+    response_model=CreditApplicationResponse,
+)
+def reject_application(
+    application_id: int,
+    data: ApplicationRejection,
+    staff: StaffUser,
+    db: DbSession,
+):
+    """Reject an application with a reason provided by staff."""
+
+    application = db.get(CreditApplication, application_id)
+
+    if application is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if application.status != "submitted":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only submitted applications can be rejected",
+        )
+
+    reason = data.reason.strip()
+
+    if len(reason) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Rejection reason must contain at least 3 characters",
+        )
+
+    application.status = "rejected"
+    application.decision_comment = reason
+
+    db.commit()
+    db.refresh(application)
 
     return application

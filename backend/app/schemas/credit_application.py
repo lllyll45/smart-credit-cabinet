@@ -9,20 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class CreditApplicationCreate(BaseModel):
     credit_product_id: int = Field(gt=0)
-
-    amount: Decimal = Field(
-        gt=0,
-        max_digits=12,
-        decimal_places=2,
-    )
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     term_months: int = Field(gt=0, le=360)
     purpose: str = Field(min_length=3, max_length=255)
-    monthly_income: Decimal = Field(
-        gt=0,
-        max_digits=12,
-        decimal_places=2,
-    )
+    monthly_income: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     employment: str = Field(min_length=2, max_length=100)
+
 
 class CreditApplicationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -30,57 +22,34 @@ class CreditApplicationResponse(BaseModel):
     id: int
     user_id: int
     credit_product_id: int | None
-
     amount: Decimal
     term_months: int
     purpose: str
-    monthly_income: Decimal
-    employment: str
-
+    monthly_income: Decimal | None
+    employment: str | None
     status: str
     comment: str | None
-
-    
     decision_comment: str | None
+    preliminary_result: str | None = None
     monthly_payment: Decimal | None
     total_payment: Decimal | None
     overpayment: Decimal | None
-
-
     created_at: datetime
     updated_at: datetime
 
 
 class CreditApplicationUpdate(BaseModel):
-    credit_product_id: int | None = Field(
-        default=None,
-        gt=0,
-    )
-
+    credit_product_id: int | None = Field(default=None, gt=0)
     amount: Decimal | None = Field(
-        default=None,
-        gt=0,
-        max_digits=12,
-        decimal_places=2,
+        default=None, gt=0, max_digits=12, decimal_places=2
     )
-    term_months: int | None = Field(
-        default=None,
-        gt=0,
-        le=360,
-    )
-    purpose: str | None = Field(
-        default=None,
-        min_length=3,
-        max_length=255,
-    )
+    term_months: int | None = Field(default=None, gt=0, le=360)
+    purpose: str | None = Field(default=None, min_length=3, max_length=255)
     monthly_income: Decimal | None = Field(
-        default=None,
-        gt=0,
-        max_digits=12,
-        decimal_places=2,
+        default=None, gt=0, max_digits=12, decimal_places=2
     )
     employment: str | None = Field(
-        default=None,
-        min_length=2,
-        max_length=100,
+        default=None, min_length=2, max_length=100
     )
+
+    

@@ -1,4 +1,4 @@
-
+﻿
 """Credit application processing service."""
 
 from decimal import Decimal
@@ -10,11 +10,14 @@ from app.models.credit_product import CreditProduct
 from app.services.calculator import calculate_credit
 
 
+MAX_PAYMENT_TO_INCOME_RATIO = Decimal("0.40")
+
+
 def process_credit_application(
     db: Session,
     application: CreditApplication,
 ) -> CreditApplication:
-    """Calculate payments and apply demo-only decision rules."""
+    """Calculate payments and preliminary assessment for staff review."""
 
     if application.status != "draft":
         raise ValueError("Only draft applications can be processed")
@@ -46,27 +49,25 @@ def process_credit_application(
         term_months=application.term_months,
     )
 
-    monthly_payment = calculation["monthly_payment"]
+    monthly_payment = Decimal(str(calculation["monthly_payment"]))
 
     application.monthly_payment = monthly_payment
     application.total_payment = calculation["total_payment"]
     application.overpayment = calculation["overpayment"]
 
-    payment_to_income = monthly_payment / application.monthly_income
+    payment_ratio = monthly_payment / application.monthly_income
 
-    # Demonstration rule only, not a real bank scoring model.
-    if payment_to_income <= Decimal("0.40"):
-        application.status = "approved"
-        application.decision_comment = (
-            "Заявка одобрена по демонстрационным правилам: "
-            "ежемесячный платёж не превышает 40% заявленного дохода."
-        )
+    if payment_ratio <= MAX_PAYMENT_TO_INCOME_RATIO:
+        application.preliminary_result = "likely_eligible"
     else:
-        application.status = "rejected"
-        application.decision_comment = (
-            "Заявка отклонена по демонстрационным правилам: "
-            "ежемесячный платёж превышает 40% заявленного дохода."
-        )
+        application.preliminary_result = "high_debt_burden"
+
+    print("APPLICATION ID:", application.id)
+    print("PAYMENT RATIO:", payment_ratio)
+    print("PRELIMINARY RESULT:", application.preliminary_result)
+
+    application.status = "submitted"
+    application.decision_comment = None
 
     db.commit()
     db.refresh(application)
