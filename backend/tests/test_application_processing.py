@@ -46,19 +46,24 @@ def setup(db_engine, TestingSessionLocal, user_a_id):
     db.close()
 
 
-def test_processing_approved(setup, user_a_id):
+def test_processing_sets_likely_eligible(setup, user_a_id):
+    """Доход большой -> preliminary_result = likely_eligible, status = submitted."""
     db, product_id = setup
     app = _make_application(db, user_a_id, product_id, "50000")
     result = process_credit_application(db, app)
-    assert result.status == "approved"
+    assert result.status == "submitted"
+    assert result.preliminary_result == "likely_eligible"
     assert result.monthly_payment is not None
+    assert result.decision_comment is None
 
 
-def test_processing_rejected(setup, user_a_id):
+def test_processing_sets_high_debt_burden(setup, user_a_id):
+    """Доход маленький -> preliminary_result = high_debt_burden, status = submitted."""
     db, product_id = setup
     app = _make_application(db, user_a_id, product_id, "5000")
     result = process_credit_application(db, app)
-    assert result.status == "rejected"
+    assert result.status == "submitted"
+    assert result.preliminary_result == "high_debt_burden"
 
 
 def test_processing_raises_on_non_draft(setup, user_a_id):

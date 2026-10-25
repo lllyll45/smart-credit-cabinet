@@ -170,10 +170,12 @@ def test_patch_submitted_returns_409(
     assert res.status_code == 409
 
 
-# ---------- SUBMIT: APPROVED / REJECTED ----------
+# ---------- SUBMIT: PRELIMINARY RESULT ----------
 
-def test_submit_approved(client, registered_user, user_a_id, create_draft_application):
-    # Доход 50000, платёж по 100000/12/15% ≈ 9025 → 18% дохода → approved
+def test_submit_sets_likely_eligible(
+    client, registered_user, user_a_id, create_draft_application
+):
+    """Доход 50000, платёж ~9000 (18% дохода) -> likely_eligible, status=submitted."""
     app_id = create_draft_application(user_id=user_a_id, amount=100000, term_months=12)
 
     res = client.post(
@@ -182,13 +184,17 @@ def test_submit_approved(client, registered_user, user_a_id, create_draft_applic
     )
     assert res.status_code == 200
     data = res.json()
-    assert data["status"] == "approved"
+    assert data["status"] == "submitted"
+    assert data["preliminary_result"] == "likely_eligible"
     assert float(data["monthly_payment"]) > 0
     assert float(data["total_payment"]) > 0
     assert float(data["overpayment"]) > 0
 
 
-def test_submit_rejected(client, registered_user, user_a_id, TestingSessionLocal, product_id):
+def test_submit_sets_high_debt_burden(
+    client, registered_user, user_a_id, TestingSessionLocal, product_id
+):
+    """Доход 5000, платёж ~9000 (180% дохода) -> high_debt_burden, status=submitted."""
     from app.models.credit_application import CreditApplication
 
     db = TestingSessionLocal()
@@ -213,7 +219,9 @@ def test_submit_rejected(client, registered_user, user_a_id, TestingSessionLocal
         headers=registered_user["headers"],
     )
     assert res.status_code == 200
-    assert res.json()["status"] == "rejected"
+    data = res.json()
+    assert data["status"] == "submitted"
+    assert data["preliminary_result"] == "high_debt_burden"
 
 
 def test_submit_without_product(client, registered_user, user_a_id, TestingSessionLocal):
