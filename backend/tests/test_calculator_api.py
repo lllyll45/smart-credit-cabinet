@@ -166,3 +166,56 @@ def test_calculator_rejects_invalid_request(seeded_client):
     )
 
     assert response.status_code == 422
+
+
+def test_calculate_with_fixed_commission_amount(seeded_client, TestingSessionLocal):
+    """Проверяет ветку commission_amount (фиксированная сумма, не %)."""
+    db = TestingSessionLocal()
+    product = CreditProduct(
+        name="С фикс. комиссией",
+        bank_name="Банк",
+        interest_rate=Decimal("15.00"),
+        min_amount=Decimal("10000.00"),
+        max_amount=Decimal("1000000.00"),
+        min_term_months=6,
+        max_term_months=36,
+        commission_rate=None,
+        commission_amount=Decimal("5000.00"),
+        is_active=True,
+    )
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    product_id = product.id
+    db.close()
+
+    res = seeded_client.post(
+        "/api/v1/calculator/calculate",
+        json={
+            "product_id": product_id,
+            "amount": "120000",
+            "term_months": 12,
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["commission"] == "5000.00"
+
+
+def test_calculate_disclaimer_present(seeded_client):
+    """В ответе должно быть поле disclaimer (расчёт предварительный)."""
+    products = seeded_client.get("/api/v1/products").json()
+    product_id = products[0]["id"]
+
+    res = seeded_client.post(
+        "/api/v1/calculator/calculate",
+        json={
+            "product_id": product_id,
+            "amount": "120000",
+            "term_months": 12,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "disclaimer" in data
+    assert isinstance(data["disclaimer"], str)
+    assert len(data["disclaimer"]) > 0
