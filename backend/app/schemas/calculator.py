@@ -1,4 +1,3 @@
-
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -21,6 +20,9 @@ class CreditCalculationResponse(BaseModel):
     total_payment: Decimal
     overpayment: Decimal
     commission: Decimal
+    disclaimer: str = (
+        "Расчёт предварительный и не является одобрением кредита банком."
+    )
 
 
 class CreditComparisonRequest(BaseModel):
