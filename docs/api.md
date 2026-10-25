@@ -1,160 +1,212 @@
 # API Smart Credit Cabinet
 
-Базовый адрес: `/api/v1`. Документ соответствует текущей реализации backend (84 теста).
+Базовый префикс: `/api/v1`. Защищённые эндпоинты требуют `Authorization: Bearer <token>`.
 
 ## 1. Аккаунт и авторизация
 
-| Метод | Эндпоинт | Назначение |
-|---|---|---|
-| `POST` | `/auth/register` | Регистрация пользователя |
-| `POST` | `/auth/login` | Вход (form-urlencoded) |
-| `GET` | `/auth/me` | Данные текущего пользователя |
-
-Регистрация принимает `email` и `password` (min 8 символов). Пароль хешируется (Argon2).
-
-Вход принимает `username` (email) и `password`, возвращает JWT-токен.
-
-`/auth/me` требует `Authorization: Bearer <token>`.
-
-## 2. Каталог кредитных продуктов
-
-| Метод | Эндпоинт | Назначение |
-|---|---|---|
-| `GET` | `/products` | Список активных продуктов |
-| `GET` | `/products/{id}` | Детали продукта |
-
-Поля продукта:
-- `name`, `bank_name` — название и банк
-- `interest_rate` — годовая ставка, %
-- `min_amount`, `max_amount` — диапазон суммы
-- `min_term_months`, `max_term_months` — диапазон срока
-- `commission_rate` — комиссия в % (или `null`)
-- `commission_amount` — фиксированная комиссия (или `null`)
-- `description`, `additional_conditions` — описание и условия
-- `supported_purposes` — список поддерживаемых целей (`working_capital`, `equipment` и т.д.)
-- `min_business_age_months` — минимальный возраст бизнеса
-- `requires_collateral` — требуется ли обеспечение
-- `is_active` — доступность
-
-## 3. Кредитный калькулятор
-
-| Метод | Эндпоинт | Назначение |
-|---|---|---|
-| `POST` | `/calculator/calculate` | Расчёт по продукту |
-| `POST` | `/calculator/compare` | Сравнение подходящих продуктов |
-
-`/calculator/calculate` принимает `product_id`, `amount`, `term_months`. Возвращает `monthly_payment`, `total_payment`, `overpayment`, `commission`, `disclaimer` (расчёт предварительный).
-
-`/calculator/compare` принимает `amount`, `term_months`. Возвращает список продуктов, подходящих по сумме и сроку, отсортированный по `total_payment`.
-
-## 4. Кредитные заявки
-
-| Метод | Эндпоинт | Назначение |
-|---|---|---|
-| `POST` | `/applications` | Создать черновик |
-| `GET` | `/applications` | Заявки текущего пользователя |
-| `GET` | `/applications/{id}` | Заявка по ID |
-| `PATCH` | `/applications/{id}` | Изменить черновик |
-| `POST` | `/applications/{id}/submit` | Отправить на рассмотрение |
-| `GET` | `/applications/{id}/history` | История изменения статусов |
-
-Все эндпоинты требуют авторизации. Пользователь видит только свои заявки.
-
-### Статусы заявки
-- `draft` — черновик, доступен для редактирования
-- `submitted` — отправлена, только чтение
-- `checking` — на проверке (staff)
-- `needs_info` — требуется дополнительная информация (staff)
-- `alternative_offer` — предложены альтернативные условия (staff)
-- `approved` — одобрена (staff)
-- `rejected` — отклонена (staff)
-
-### Submit
-При отправке backend:
-1. Проверяет, что заявка в статусе `draft`.
-2. Проверяет продукт (активен, сумма и срок в лимитах).
-3. Рассчитывает `monthly_payment`, `total_payment`, `overpayment`.
-4. Выставляет `preliminary_result`:
-   - `likely_eligible` — платёж ≤ 40% дохода
-   - `high_debt_burden` — платёж > 40% дохода
-5. Ставит статус `submitted` и пишет запись в историю.
-
-## 5. Staff-эндпоинты заявок
-
-Требуют роль `staff` или `admin`.
-
-| Метод | Эндпоинт | Назначение | Откуда → Куда |
+| Метод | Путь | Авторизация | Назначение |
 |---|---|---|---|
-| `GET` | `/applications/staff` | Все заявки для staff | — |
-| `POST` | `/applications/{id}/check` | Начать проверку | submitted → checking |
-| `POST` | `/applications/{id}/request-info` | Запросить информацию | submitted/checking → needs_info |
-| `POST` | `/applications/{id}/offer-alternative` | Предложить альтернативу | submitted/checking → alternative_offer |
-| `POST` | `/applications/{id}/approve` | Одобрить | submitted → approved |
-| `POST` | `/applications/{id}/reject` | Отклонить (тело `{"reason": "..."}`, min 3 символа) | submitted → rejected |
+| POST | `/auth/register` | Нет | Регистрация |
+| POST | `/auth/login` | Нет | Получение JWT |
+| GET | `/auth/me` | Да | Текущий пользователь |
 
-Все переходы пишут запись в `ApplicationHistory`.
+Регистрация принимает `email` (EmailStr) и `password` (8–128 символов). Вход принимает `username` (email) и `password` в формате `application/x-www-form-urlencoded`.
+
+Пример регистрации:
+```json
+{"email":"demo@example.com","password":"DemoPass123"}
+```
+
+Ответ логина:
+```json
+{"access_token":"<jwt>","token_type":"bearer"}
+```
+
+## 2. Кредитные продукты
+
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| GET | `/products` | Нет | Список активных продуктов |
+| GET | `/products/{id}` | Нет | Детали продукта (404 для неактивного) |
+
+Поля продукта: `id`, `name`, `bank_name`, `interest_rate`, `min_amount`, `max_amount`, `min_term_months`, `max_term_months`, `commission_rate`, `commission_amount`, `description`, `additional_conditions`, `supported_purposes`, `min_business_age_months`, `requires_collateral`, `is_active`, `created_at`, `updated_at`.
+
+## 3. Калькулятор
+
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| POST | `/calculator/calculate` | Нет | Расчёт по продукту |
+| POST | `/calculator/compare` | Нет | Сравнение продуктов |
+
+`/calculator/calculate`:
+```json
+{"product_id": 1, "amount": "120000", "term_months": 12}
+```
+Ответ: `product_id`, `product_name`, `bank_name`, `interest_rate`, `amount`, `term_months`, `monthly_payment`, `total_payment`, `overpayment`, `commission`, `disclaimer`.
+
+Ошибки: `404` — продукт не найден/неактивен; `422` — сумма или срок вне диапазона.
+
+`/calculator/compare`:
+```json
+{"amount": "120000", "term_months": 12}
+```
+Ответ: `amount`, `term_months`, `products` (отсортированы по `total_payment` по возрастанию).
+
+## 4. Заявки
+
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| POST | `/applications` | Да | Создать черновик |
+| GET | `/applications` | Да | Список собственных заявок |
+| GET | `/applications/{id}` | Да | Получить свою заявку |
+| PATCH | `/applications/{id}` | Да | Изменить черновик |
+| POST | `/applications/{id}/submit` | Да | Отправить заявку |
+| GET | `/applications/{id}/history` | Да | История статусов |
+
+Тело создания:
+```json
+{
+  "credit_product_id": 1,
+  "amount": "100000",
+  "term_months": 12,
+  "purpose": "Тестовая цель",
+  "monthly_income": "50000",
+  "employment": "ИП"
+}
+```
+
+Статус после создания: `draft`.
+
+Ошибки создания: `422` — продукт не найден/неактивен, сумма или срок вне лимита, доход ≤ 0.
+
+При `submit`:
+1. Проверка статуса `draft`.
+2. Проверка продукта (активен, сумма и срок в лимитах).
+3. Расчёт `monthly_payment`, `total_payment`, `overpayment`.
+4. Установка `preliminary_result`:
+   - `likely_eligible` — платёж ≤ 40% дохода;
+   - `high_debt_burden` — платёж > 40% дохода.
+5. Статус → `submitted`, запись в историю.
+
+Ошибки: `404` — заявка не найдена/чужая; `409` — не `draft`; `422` — нет продукта/данные не проходят.
+
+`/history` возвращает массив записей: `id`, `application_id`, `old_status`, `new_status`, `comment`, `created_at` (хронологический порядок).
+
+## 5. Обработка заявок сотрудником
+
+Требуется роль `staff` или `admin` (иначе `403`).
+
+| Метод | Путь | Переход |
+|---|---|---|
+| GET | `/applications/staff` | Просмотр всех заявок |
+| POST | `/applications/{id}/check` | `submitted` → `checking` |
+| POST | `/applications/{id}/request-info` | `submitted`/`checking` → `needs_info` |
+| POST | `/applications/{id}/offer-alternative` | `submitted`/`checking` → `alternative_offer` |
+| POST | `/applications/{id}/approve` | `submitted` → `approved` |
+| POST | `/applications/{id}/reject` | `submitted` → `rejected` |
+
+`/reject` принимает:
+```json
+{"reason": "Недостаточный доход"}
+```
+`reason` — минимум 3 символа (после `.strip()`), иначе `422`. Причина сохраняется в `decision_comment` и в истории.
+
+Каждый переход записывает событие в `application_history`.
 
 ## 6. Профиль бизнеса
 
-| Метод | Эндпоинт | Назначение |
-|---|---|---|
-| `GET` | `/business-profile` | Получить профиль (404, если нет) |
-| `PUT` | `/business-profile` | Создать или обновить (upsert) |
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| GET | `/business-profile` | Да | Получить профиль (404 если нет) |
+| PUT | `/business-profile` | Да | Создать или обновить (upsert) |
 
-Поля: `business_name` (1..255), `legal_form` (`IP` или `OOO`), `industry`, `region`, `business_start_date`, `monthly_revenue` (≥ 0).
+Тело `PUT`:
+```json
+{
+  "business_name": "ООО Ромашка",
+  "legal_form": "OOO",
+  "industry": "Торговля",
+  "region": "Республика Башкортостан",
+  "business_start_date": "2022-05-01",
+  "monthly_revenue": "850000.00"
+}
+```
+
+`legal_form` — строго `IP` или `OOO` (иначе `422`). `business_name` — 1..255. `monthly_revenue` — ≥ 0.
 
 ## 7. Рекомендации
 
-| Метод | Эндпоинт | Назначение |
-|---|---|---|
-| `POST` | `/recommendations` | Подобрать и сохранить |
-| `GET` | `/recommendations/{id}` | Получить сохранённый подбор (404 для чужого) |
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| POST | `/recommendations` | Да | Создать подбор |
+| GET | `/recommendations/{id}` | Да | Получить сохранённый подбор (404 для чужого) |
 
-`POST /recommendations` принимает:
-- `requested_amount` (> 0)
-- `term_months` (1..360)
-- `purpose` (1..100)
-- `monthly_revenue` (опционально)
-- `business_age_months` (опционально)
+Тело `POST`:
+```json
+{
+  "requested_amount": "200000",
+  "term_months": 18,
+  "purpose": "working_capital",
+  "monthly_revenue": "200000",
+  "business_age_months": 24
+}
+```
 
-Возвращает `id`, параметры подбора и `items` — список продуктов с:
-- `product_id`
-- `match_score` (0..100, взвешенный: сумма 40%, срок 30%, доход 20%, возраст 10%)
-- `estimated_monthly_payment`
-- `reasons` — массив строк с объяснением
+Ответ:
+```json
+{
+  "id": 1,
+  "user_id": 1,
+  "requested_amount": "200000.00",
+  "term_months": 18,
+  "purpose": "working_capital",
+  "monthly_revenue": "200000.00",
+  "business_age_months": 24,
+  "created_at": "...",
+  "items": [
+    {
+      "id": 1,
+      "product_id": 1,
+      "match_score": "92.00",
+      "estimated_monthly_payment": "11110.40",
+      "reasons": ["Сумма входит в диапазон продукта", "..."]
+    }
+  ]
+}
+```
 
 Фильтрация:
-- цель должна быть в `supported_purposes` продукта (если список не пуст)
-- возраст бизнеса ≥ `min_business_age_months` (если задано)
-- сумма и срок в диапазоне продукта
-- продукт активен
+- продукт активен;
+- сумма и срок в диапазоне продукта;
+- `purpose` ∈ `supported_purposes` (если список не пуст);
+- `business_age_months` ≥ `min_business_age_months` (если задано).
+
+`match_score` (0..100) — взвешенный: сумма 40%, срок 30%, доход 20%, возраст бизнеса 10%.
 
 ## 8. Сводная таблица
 
-| Раздел | Метод и путь | Авторизация |
+| Метод | Путь | Авторизация |
 |---|---|---|
-| Аккаунт | `POST /auth/register` | Нет |
-| Аккаунт | `POST /auth/login` | Нет |
-| Аккаунт | `GET /auth/me` | Да |
-| Каталог | `GET /products` | Нет |
-| Каталог | `GET /products/{id}` | Нет |
-| Калькулятор | `POST /calculator/calculate` | Нет |
-| Калькулятор | `POST /calculator/compare` | Нет |
-| Заявки | `POST /applications` | Да |
-| Заявки | `GET /applications` | Да |
-| Заявки | `GET /applications/{id}` | Да |
-| Заявки | `PATCH /applications/{id}` | Да |
-| Заявки | `POST /applications/{id}/submit` | Да |
-| Заявки | `GET /applications/{id}/history` | Да |
-| Staff | `GET /applications/staff` | staff/admin |
-| Staff | `POST /applications/{id}/check` | staff/admin |
-| Staff | `POST /applications/{id}/request-info` | staff/admin |
-| Staff | `POST /applications/{id}/offer-alternative` | staff/admin |
-| Staff | `POST /applications/{id}/approve` | staff/admin |
-| Staff | `POST /applications/{id}/reject` | staff/admin |
-| Профиль | `GET /business-profile` | Да |
-| Профиль | `PUT /business-profile` | Да |
-| Рекомендации | `POST /recommendations` | Да |
-| Рекомендации | `GET /recommendations/{id}` | Да |
-
-Все защищённые эндпоинты требуют `Authorization: Bearer <token>`.
+| POST | `/auth/register` | Нет |
+| POST | `/auth/login` | Нет |
+| GET | `/auth/me` | Да |
+| GET | `/products` | Нет |
+| GET | `/products/{id}` | Нет |
+| POST | `/calculator/calculate` | Нет |
+| POST | `/calculator/compare` | Нет |
+| POST | `/applications` | Да |
+| GET | `/applications` | Да |
+| GET | `/applications/{id}` | Да |
+| PATCH | `/applications/{id}` | Да |
+| POST | `/applications/{id}/submit` | Да |
+| GET | `/applications/{id}/history` | Да |
+| GET | `/applications/staff` | staff/admin |
+| POST | `/applications/{id}/check` | staff/admin |
+| POST | `/applications/{id}/request-info` | staff/admin |
+| POST | `/applications/{id}/offer-alternative` | staff/admin |
+| POST | `/applications/{id}/approve` | staff/admin |
+| POST | `/applications/{id}/reject` | staff/admin |
+| GET | `/business-profile` | Да |
+| PUT | `/business-profile` | Да |
+| POST | `/recommendations` | Да |
+| GET | `/recommendations/{id}` | Да |
