@@ -1,4 +1,3 @@
-
 """Credit application API endpoints."""
 
 from typing import Annotated
@@ -11,6 +10,7 @@ from app.api.auth import CurrentUser, StaffUser
 from app.core.database import get_db
 from app.models.credit_application import CreditApplication
 from app.models.credit_product import CreditProduct
+from app.models.application_history import ApplicationHistory
 from app.schemas.application_decision import ApplicationRejection
 from app.schemas.credit_application import (
     CreditApplicationCreate,
@@ -18,6 +18,8 @@ from app.schemas.credit_application import (
     CreditApplicationUpdate,
 )
 from app.services.application_processing import process_credit_application
+from app.schemas.application_history import ApplicationHistoryResponse
+from app.services.application_history import record_status_change
 
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -97,6 +99,15 @@ def create_application(
     db.commit()
     db.refresh(application)
 
+    record_status_change(
+        db=db,
+        application=application,
+        old_status=None,
+        new_status="draft",
+        comment="Заявка создана",
+    )
+    db.commit()
+
     return application
 
 
@@ -160,6 +171,39 @@ def get_application(
         )
 
     return application
+
+
+@router.get(
+    "/{application_id}/history",
+    response_model=list[ApplicationHistoryResponse],
+)
+def get_application_history(
+    application_id: int,
+    user: CurrentUser,
+    db: DbSession,
+):
+    """Возвращает историю изменения статусов заявки текущего пользователя."""
+
+    application = db.scalar(
+        select(CreditApplication).where(
+            CreditApplication.id == application_id,
+            CreditApplication.user_id == user.id,
+        )
+    )
+
+    if application is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    history = db.scalars(
+        select(ApplicationHistory)
+        .where(ApplicationHistory.application_id == application_id)
+        .order_by(ApplicationHistory.created_at)
+    ).all()
+
+    return list(history)
 
 
 @router.patch(
@@ -265,8 +309,10 @@ def submit_application(
         term_months=application.term_months,
     )
 
+    old_status = application.status
+
     try:
-        return process_credit_application(
+        application = process_credit_application(
             db=db,
             application=application,
         )
@@ -276,6 +322,18 @@ def submit_application(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
+
+    record_status_change(
+        db=db,
+        application=application,
+        old_status=old_status,
+        new_status=application.status,
+        comment="Заявка отправлена на рассмотрение",
+    )
+    db.commit()
+    db.refresh(application)
+
+    return application
 
 
 @router.post(
@@ -303,8 +361,17 @@ def approve_application(
             detail="Only submitted applications can be approved",
         )
 
+    old_status = application.status
     application.status = "approved"
     application.decision_comment = "Заявка одобрена сотрудником банка."
+
+    record_status_change(
+        db=db,
+        application=application,
+        old_status=old_status,
+        new_status="approved",
+        comment="Заявка одобрена сотрудником банка",
+    )
 
     db.commit()
     db.refresh(application)
@@ -346,8 +413,17 @@ def reject_application(
             detail="Rejection reason must contain at least 3 characters",
         )
 
+    old_status = application.status
     application.status = "rejected"
     application.decision_comment = reason
+
+    record_status_change(
+        db=db,
+        application=application,
+        old_status=old_status,
+        new_status="rejected",
+        comment=f"Заявка отклонена: {reason}",
+    )
 
     db.commit()
     db.refresh(application)
