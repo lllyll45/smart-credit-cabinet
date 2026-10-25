@@ -53,20 +53,63 @@ def client(db_engine, TestingSessionLocal):
 
 
 @pytest.fixture(scope="function")
-def auth_headers(client):
-    client.post("/api/v1/auth/register", json={"email": "test_a@test.com", "password": "password123"})
-    client.post("/api/v1/auth/register", json={"email": "test_b@test.com", "password": "password123"})
-
-    res_a = client.post("/api/v1/auth/login", data={"username": "test_a@test.com", "password": "password123"})
-    token_a = res_a.json()["access_token"]
-
-    res_b = client.post("/api/v1/auth/login", data={"username": "test_b@test.com", "password": "password123"})
-    token_b = res_b.json()["access_token"]
-
+def registered_user(client):
+    """Регистрирует test_a@test.com и возвращает (user_data, headers)."""
+    email = "test_a@test.com"
+    password = "password123"
+    client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    res = client.post(
+        "/api/v1/auth/login",
+        data={"username": email, "password": password},
+    )
+    token = res.json()["access_token"]
+    user = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
     return {
-        "a": {"Authorization": f"Bearer {token_a}"},
-        "b": {"Authorization": f"Bearer {token_b}"},
+        "user": user,
+        "headers": {"Authorization": f"Bearer {token}"},
+        "email": email,
+        "password": password,
     }
+
+
+@pytest.fixture(scope="function")
+def second_user(client):
+    """Регистрирует test_b@test.com и возвращает (user_data, headers)."""
+    email = "test_b@test.com"
+    password = "password123"
+    client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    res = client.post(
+        "/api/v1/auth/login",
+        data={"username": email, "password": password},
+    )
+    token = res.json()["access_token"]
+    user = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+    return {
+        "user": user,
+        "headers": {"Authorization": f"Bearer {token}"},
+        "email": email,
+        "password": password,
+    }
+
+
+@pytest.fixture(scope="function")
+def auth_headers(registered_user, second_user):
+    """Совместимость со старыми тестами: {'a': headers, 'b': headers}."""
+    return {
+        "a": registered_user["headers"],
+        "b": second_user["headers"],
+    }
+
+
+@pytest.fixture(scope="function")
+def user_a_id(client, registered_user):
+    return registered_user["user"]["id"]
 
 
 @pytest.fixture(scope="function")
@@ -91,10 +134,26 @@ def product_id(client, TestingSessionLocal):
 
 
 @pytest.fixture(scope="function")
-def user_a_id(client, auth_headers, TestingSessionLocal):
-    db = TestingSessionLocal()
-    user = db.query(User).filter(User.email == "test_a@test.com").first()
-    assert user is not None, "Пользователь test_a@test.com не найден — auth_headers не отработал?"
-    uid = user.id
-    db.close()
-    return uid
+def create_draft_application(client, TestingSessionLocal, product_id):
+    """Фабрика: создаёт заявку в БД и возвращает её id."""
+
+    def _create(user_id, status="draft", amount=100000, term_months=12):
+        db = TestingSessionLocal()
+        app_obj = CreditApplication(
+            user_id=user_id,
+            credit_product_id=product_id,
+            amount=amount,
+            term_months=term_months,
+            purpose="Тест",
+            monthly_income=50000,
+            employment="ИП",
+            status=status,
+        )
+        db.add(app_obj)
+        db.commit()
+        db.refresh(app_obj)
+        app_id = app_obj.id
+        db.close()
+        return app_id
+
+    return _create
