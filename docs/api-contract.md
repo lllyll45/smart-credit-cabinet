@@ -1,245 +1,123 @@
-# API Contract — Smart Credit Cabinet
+# API Smart Credit Cabinet
 
-## Общие правила
-- Base URL: `http://localhost:8000`; префикс API: `/api/v1`.
-- Запросы и ответы — JSON; поля JSON в `snake_case`.
-- Идентификаторы — UUID. Дата/время — ISO 8601 с часовым поясом; серверное время хранить в UTC.
-- Денежные значения передаются в рублях; на backend использовать `Decimal` и SQL `NUMERIC`, не `float`.
-- Защищённые методы требуют `Authorization: Bearer <access_token>`.
-- Владелец определяется по токену, не по `user_id` из тела запроса.
-- Статус заявки меняется только сервером через предусмотренные действия.
+Базовый префикс: `/api/v1`. Защищённые эндпоинты требуют заголовок `Authorization: Bearer <token>`.
 
-## Формат ошибки
+## 1. Аккаунт и авторизация
+
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| POST | `/auth/register` | Нет | Регистрация |
+| POST | `/auth/login` | Нет | Получение JWT |
+| GET | `/auth/me` | Да | Текущий пользователь |
+
+Регистрация принимает `email` и `password` (не менее 8 символов). Вход принимает `username` (email) и `password` в формате `application/x-www-form-urlencoded`.
+
+Пример регистрации:
 ```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Проверьте переданные данные",
-    "details": [{"field": "amount", "message": "Сумма должна быть положительной"}]
-  }
-}
-```
-`details` может быть пустым массивом. Ошибки FastAPI `422` нужно преобразовать к этому формату.
-
-HTTP-коды: `200` — успех; `201` — ресурс создан; `204` — успех без тела; `400` — некорректный запрос; `401` — не авторизован; `403` — запрещено; `404` — не найдено/нет доступа; `409` — конфликт состояния; `422` — ошибка валидации; `500` — внутренняя ошибка.
-
-## Статусы заявок
-`DRAFT`, `SUBMITTED`, `CHECKING`, `NEEDS_INFO`, `APPROVED`, `REJECTED`, `ALTERNATIVE_OFFER`.
-`APPROVED` и `REJECTED` в MVP — результаты демонстрационного алгоритма, а не решение реального банка.
-
-## Авторизация
-
-### `POST /api/v1/auth/register`
-Request:
-```json
-{"email":"owner@example.com","password":"example-password"}
-```
-Response `201`:
-```json
-{"id":"8b5d14f0-97c7-4e28-9a3e-38f26b5a0200","email":"owner@example.com","created_at":"2026-10-22T10:00:00Z"}
-```
-Пароль не возвращается; хранится только безопасный хеш.
-
-### `POST /api/v1/auth/login`
-Request:
-```json
-{"email":"owner@example.com","password":"example-password"}
-```
-Response `200`:
-```json
-{"access_token":"<jwt-token>","token_type":"bearer"}
+{"email":"demo@example.com","password":"DemoPass123"}
 ```
 
-### `GET /api/v1/auth/me`
-Требует JWT. Response `200`:
-```json
-{"id":"8b5d14f0-97c7-4e28-9a3e-38f26b5a0200","email":"owner@example.com"}
-```
+## 2. Кредитные продукты
 
-## Профиль бизнеса
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| GET | `/products` | Нет | Список активных продуктов |
+| GET | `/products/{id}` | Нет | Детали продукта |
 
-### `GET /api/v1/business-profile`
-Возвращает профиль текущего пользователя; если профиль отсутствует — `404`.
-Response `200`:
-```json
-{
-  "id":"c11ac55a-5aaf-4e7a-9e20-03c8fbcf53f2",
-  "business_name":"ООО Ромашка",
-  "legal_form":"OOO",
-  "industry":"Торговля",
-  "region":"Республика Башкортостан",
-  "business_start_date":"2022-05-01",
-  "monthly_revenue":850000,
-  "created_at":"2026-10-22T10:00:00Z",
-  "updated_at":"2026-10-22T10:00:00Z"
-}
-```
+Основные поля продукта: `name`, `bank_name`, `interest_rate`, `min_amount`, `max_amount`, `min_term_months`, `max_term_months`, `commission_rate`, `commission_amount`, `description`, `additional_conditions`, `supported_purposes`, `min_business_age_months`, `requires_collateral`, `is_active`.
 
-### `PUT /api/v1/business-profile`
-Создаёт или полностью обновляет профиль.
-Request:
-```json
-{
-  "business_name":"ООО Ромашка",
-  "legal_form":"OOO",
-  "industry":"Торговля",
-  "region":"Республика Башкортостан",
-  "business_start_date":"2022-05-01",
-  "monthly_revenue":850000
-}
-```
-Response `200`: объект профиля, как в `GET`. `legal_form`: `IP` или `OOO`.
+## 3. Калькулятор
 
-## Кредитные продукты
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| POST | `/calculator/calculate` | Нет | Расчёт по продукту |
+| POST | `/calculator/compare` | Нет | Сравнение продуктов |
 
-### `GET /api/v1/products`
-Публичный список активных продуктов.
-Response `200`:
-```json
-{
-  "items":[{
-    "id":"e59e94f7-2cbb-46d5-ae83-0801c88b4d90",
-    "name":"Оборотный кредит",
-    "description":"Финансирование текущих расходов бизнеса",
-    "min_amount":100000,
-    "max_amount":5000000,
-    "min_term_months":3,
-    "max_term_months":36,
-    "interest_rate_min":15.5,
-    "interest_rate_max":24.0,
-    "min_business_age_months":6,
-    "supported_purposes":["WORKING_CAPITAL","EQUIPMENT"],
-    "requires_collateral":false
-  }],
-  "total":1
-}
-```
+`/calculator/calculate` принимает `product_id`, `amount`, `term_months`. В ответе ожидаются `monthly_payment`, `total_payment`, `overpayment`, `commission`, `disclaimer`.
 
-### `GET /api/v1/products/{product_id}`
-Возвращает объект продукта. Для отсутствующего или неактивного продукта — `404`.
-Суммы — рубли; срок — месяцы; процентные ставки — годовые проценты.
+`/calculator/compare` принимает `amount`, `term_months` и возвращает подходящие по диапазонам продукты с сортировкой по общей сумме платежей.
 
-## Рекомендации
+## 4. Заявки
 
-### `POST /api/v1/recommendations`
-Требует JWT; создаёт и сохраняет результат подбора.
-Request:
-```json
-{
-  "requested_amount":750000,
-  "term_months":24,
-  "purpose":"WORKING_CAPITAL",
-  "monthly_revenue":850000,
-  "business_age_months":30
-}
-```
-Response `201`:
-```json
-{
-  "id":"95e75df8-1d7c-4b83-8e52-a5eb62fd78f9",
-  "requested_amount":750000,
-  "term_months":24,
-  "purpose":"WORKING_CAPITAL",
-  "items":[{
-    "product":{"id":"e59e94f7-2cbb-46d5-ae83-0801c88b4d90","name":"Оборотный кредит"},
-    "match_score":88,
-    "estimated_monthly_payment":37000,
-    "reasons":["Сумма входит в диапазон продукта","Срок соответствует условиям","Цель кредита поддерживается"]
-  }],
-  "created_at":"2026-10-22T10:00:00Z"
-}
-```
-`match_score` — условная оценка соответствия 0–100, не вероятность одобрения. Платёж ориентировочный и не является банковской офертой.
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| POST | `/applications` | Да | Создать черновик |
+| GET | `/applications` | Да | Список собственных заявок |
+| GET | `/applications/{id}` | Да | Получить свою заявку |
+| PATCH | `/applications/{id}` | Да | Изменить черновик |
+| POST | `/applications/{id}/submit` | Да | Отправить заявку |
+| GET | `/applications/{id}/history` | Да | История статусов |
 
-### `GET /api/v1/recommendations/{recommendation_id}`
-Возвращает сохранённый подбор текущего пользователя; чужой или отсутствующий ресурс — `404`.
+При создании заявки используются поля `credit_product_id`, `amount`, `term_months`, `purpose`, `monthly_income`, `employment` (точный набор и обязательность нужно сверить с OpenAPI).
 
-## Заявки
+При отправке backend проверяет статус `draft`, доступность продукта и диапазоны суммы/срока, рассчитывает платёжные показатели, записывает предварительный результат и меняет статус на `submitted`.
 
-### `POST /api/v1/applications`
-Создаёт черновик; требует JWT.
-Request:
-```json
-{
-  "product_id":"e59e94f7-2cbb-46d5-ae83-0801c88b4d90",
-  "amount":750000,
-  "term_months":24,
-  "purpose":"WORKING_CAPITAL",
-  "recommendation_item_id":null
-}
-```
-Response `201`:
-```json
-{
-  "id":"6d22283a-bd67-4f62-9402-60d3ac4f5d5e",
-  "product_id":"e59e94f7-2cbb-46d5-ae83-0801c88b4d90",
-  "product_name":"Оборотный кредит",
-  "amount":750000,
-  "term_months":24,
-  "purpose":"WORKING_CAPITAL",
-  "status":"DRAFT",
-  "created_at":"2026-10-22T10:00:00Z",
-  "updated_at":"2026-10-22T10:00:00Z",
-  "submitted_at":null
-}
-```
+Предварительная оценка:
+- `likely_eligible` — платёж не превышает 40% указанного дохода;
+- `high_debt_burden` — платёж превышает 40% указанного дохода.
 
-### `GET /api/v1/applications`
-Только заявки текущего пользователя.
-Response `200`:
-```json
-{"items":[{"id":"6d22283a-bd67-4f62-9402-60d3ac4f5d5e","product_id":"e59e94f7-2cbb-46d5-ae83-0801c88b4d90","product_name":"Оборотный кредит","amount":750000,"term_months":24,"purpose":"WORKING_CAPITAL","status":"DRAFT","created_at":"2026-10-22T10:00:00Z","updated_at":"2026-10-22T10:00:00Z","submitted_at":null}],"total":1}
-```
+Это демонстрационная эвристика, а не решение банка.
 
-### `GET /api/v1/applications/{application_id}`
-Возвращает заявку текущего пользователя в формате объекта заявки из `POST /applications`.
+## 5. Обработка заявок сотрудником
 
-### `PATCH /api/v1/applications/{application_id}`
-Редактирует только `DRAFT`. Все поля необязательны.
-Request:
-```json
-{"amount":900000,"term_months":30}
-```
-Response `200`: обновлённая заявка. Для заявки в другом статусе — `409`.
+Требуется роль `staff` или `admin`.
 
-### `POST /api/v1/applications/{application_id}/submit`
-Отправляет черновик на обработку; тело пустое.
-Response `200`:
-```json
-{"id":"6d22283a-bd67-4f62-9402-60d3ac4f5d5e","status":"SUBMITTED","submitted_at":"2026-10-22T10:05:00Z"}
-```
-Повторная отправка заявки не в `DRAFT` — `409`; некорректные данные — `422`.
+| Метод | Путь | Переход |
+|---|---|---|
+| GET | `/applications/staff` | Просмотр всех заявок |
+| POST | `/applications/{id}/check` | `submitted` → `checking` |
+| POST | `/applications/{id}/request-info` | `submitted`/`checking` → `needs_info` |
+| POST | `/applications/{id}/offer-alternative` | `submitted`/`checking` → `alternative_offer` |
+| POST | `/applications/{id}/approve` | `submitted` → `approved` |
+| POST | `/applications/{id}/reject` | `submitted` → `rejected` |
 
-## Решение и история
+Отклонение принимает тело с `reason` (минимум 3 символа, согласно предоставленному описанию). В предоставленном документе для `/approve` и некоторых других операций не указаны точные схемы тела; их нужно смотреть в `/docs`.
 
-### `GET /api/v1/applications/{application_id}/decision`
-Response `200`:
-```json
-{
-  "application_id":"6d22283a-bd67-4f62-9402-60d3ac4f5d5e",
-  "result":"ALTERNATIVE_OFFER",
-  "score":72,
-  "reason":"Найден продукт, лучше соответствующий указанному сроку",
-  "alternative_product_id":"e59e94f7-2cbb-46d5-ae83-0801c88b4d90",
-  "created_at":"2026-10-22T10:10:00Z"
-}
-```
-`result`: `APPROVED`, `REJECTED` или `ALTERNATIVE_OFFER`. Если решения ещё нет, единообразно реализовать `404 DECISION_NOT_FOUND` либо `200` с `decision: null` и отразить это в OpenAPI.
+## 6. Профиль бизнеса
 
-### `GET /api/v1/applications/{application_id}/history`
-Response `200`:
-```json
-{
-  "items":[
-    {"id":"2b5af38e-7ad8-4cc1-9bb6-a4bb07e7f7f4","old_status":null,"new_status":"DRAFT","comment":"Заявка создана","created_at":"2026-10-22T10:00:00Z"},
-    {"id":"5b29a4c2-bb8e-4bde-9f84-9fb4d83f34c7","old_status":"DRAFT","new_status":"SUBMITTED","comment":"Заявка отправлена пользователем","created_at":"2026-10-22T10:05:00Z"}
-  ],
-  "total":2
-}
-```
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| GET | `/business-profile` | Да | Получить профиль |
+| PUT | `/business-profile` | Да | Создать или обновить профиль |
 
-## Соглашения реализации
-1. В ответах не возвращать пароль, хеш пароля, секреты и stack trace.
-2. Списки возвращают `{ "items": [], "total": 0 }`.
-3. Все запросы к заявкам проверяют владельца.
-4. Контракт сверяется с автоматически генерируемой документацией FastAPI `/docs`; при изменениях обновлять этот документ.
+Поля: `business_name`, `legal_form` (`IP` или `OOO`), `industry`, `region`, `business_start_date`, `monthly_revenue`. Для отсутствующего профиля `GET` возвращает 404 согласно описанию.
+
+## 7. Рекомендации
+
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| POST | `/recommendations` | Да | Создать подбор |
+| GET | `/recommendations/{id}` | Да | Получить сохранённый подбор |
+
+`POST /recommendations` принимает `requested_amount`, `term_months`, `purpose`, необязательные `monthly_revenue` и `business_age_months`.
+
+Подбор фильтрует неактивные продукты и продукты, не соответствующие сумме, сроку, цели или минимальному возрасту бизнеса. Элементы результата содержат `product_id`, `match_score`, `estimated_monthly_payment`, `reasons`. Оценка описана как взвешенная: сумма — 40%, срок — 30%, доход — 20%, возраст бизнеса — 10%.
+
+## 8. Полный список путей
+
+| Метод | Путь |
+|---|---|
+| POST | `/auth/register` |
+| POST | `/auth/login` |
+| GET | `/auth/me` |
+| GET | `/products` |
+| GET | `/products/{id}` |
+| POST | `/calculator/calculate` |
+| POST | `/calculator/compare` |
+| POST | `/applications` |
+| GET | `/applications` |
+| GET | `/applications/{id}` |
+| PATCH | `/applications/{id}` |
+| POST | `/applications/{id}/submit` |
+| GET | `/applications/{id}/history` |
+| GET | `/applications/staff` |
+| POST | `/applications/{id}/check` |
+| POST | `/applications/{id}/request-info` |
+| POST | `/applications/{id}/offer-alternative` |
+| POST | `/applications/{id}/approve` |
+| POST | `/applications/{id}/reject` |
+| GET | `/business-profile` |
+| PUT | `/business-profile` |
+| POST | `/recommendations` |
+| GET | `/recommendations/{id}` |
+

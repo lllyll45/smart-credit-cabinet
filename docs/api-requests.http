@@ -1,0 +1,153 @@
+﻿# Smart Credit Cabinet — примеры запросов
+# Открыть в VS Code (REST Client) или IntelliJ HTTP Client.
+
+@base = http://127.0.0.1:8000/api/v1
+@token = ВСТАВЬТЕ_ТОКЕН
+@staff_token = ВСТАВЬТЕ_STAFF_ТОКЕН
+
+### 1. Регистрация
+POST {{base}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "demo@example.com",
+  "password": "password123"
+}
+
+### 2. Логин
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=demo@example.com&password=password123
+
+### 3. Текущий пользователь
+GET {{base}}/auth/me
+Authorization: Bearer {{token}}
+
+### 4. Каталог продуктов
+GET {{base}}/products
+
+### 5. Продукт по ID
+GET {{base}}/products/1
+
+### 6. Расчёт
+POST {{base}}/calculator/calculate
+Content-Type: application/json
+
+{
+  "product_id": 1,
+  "amount": "120000",
+  "term_months": 12
+}
+
+### 7. Сравнение
+POST {{base}}/calculator/compare
+Content-Type: application/json
+
+{
+  "amount": "120000",
+  "term_months": 12
+}
+
+### 8. Создать заявку
+POST {{base}}/applications
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "credit_product_id": 1,
+  "amount": "100000",
+  "term_months": 12,
+  "purpose": "Тест",
+  "monthly_income": "50000",
+  "employment": "ИП"
+}
+
+### 9. Свои заявки
+GET {{base}}/applications
+Authorization: Bearer {{token}}
+
+### 10. Заявка по ID
+GET {{base}}/applications/1
+Authorization: Bearer {{token}}
+
+### 11. Патч черновика
+PATCH {{base}}/applications/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "200000"
+}
+
+### 12. Submit
+POST {{base}}/applications/1/submit
+Authorization: Bearer {{token}}
+
+### 13. История
+GET {{base}}/applications/1/history
+Authorization: Bearer {{token}}
+
+### 14. Профиль (get)
+GET {{base}}/business-profile
+Authorization: Bearer {{token}}
+
+### 15. Профиль (upsert)
+PUT {{base}}/business-profile
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "business_name": "ООО Ромашка",
+  "legal_form": "OOO",
+  "industry": "Торговля",
+  "region": "РБ",
+  "business_start_date": "2022-05-01",
+  "monthly_revenue": "850000.00"
+}
+
+### 16. Рекомендации
+POST {{base}}/recommendations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "requested_amount": "200000",
+  "term_months": 18,
+  "purpose": "working_capital",
+  "monthly_revenue": "200000",
+  "business_age_months": 24
+}
+
+### 17. Рекомендации по ID
+GET {{base}}/recommendations/1
+Authorization: Bearer {{token}}
+
+### 18. Все заявки (staff)
+GET {{base}}/applications/staff
+Authorization: Bearer {{staff_token}}
+
+### 19. Check (staff)
+POST {{base}}/applications/1/check
+Authorization: Bearer {{staff_token}}
+
+### 20. Request info (staff)
+POST {{base}}/applications/1/request-info
+Authorization: Bearer {{staff_token}}
+
+### 21. Alternative (staff)
+POST {{base}}/applications/1/offer-alternative
+Authorization: Bearer {{staff_token}}
+
+### 22. Approve (staff)
+POST {{base}}/applications/1/approve
+Authorization: Bearer {{staff_token}}
+
+### 23. Reject (staff)
+POST {{base}}/applications/1/reject
+Authorization: Bearer {{staff_token}}
+Content-Type: application/json
+
+{
+  "reason": "Недостаточный доход"
+}
