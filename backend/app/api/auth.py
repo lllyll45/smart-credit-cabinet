@@ -101,11 +101,15 @@ def get_current_user(token: BearerToken, db: DbSession) -> User:
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
-
-@router.get("/me", response_model=UserResponse)
-def get_me(user: CurrentUser):
-    return user
-
+@router.get("/me")
+def get_me(
+    current_user: User = Depends(get_current_user),
+):
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "role": current_user.role,
+    }
 
 def get_staff_user(user: CurrentUser) -> User:
     """Allow access only to staff members and administrators."""
