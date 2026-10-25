@@ -1,61 +1,86 @@
 # Архитектура системы «Умный кредитный кабинет предпринимателя»
 
-## 1. Назначение системы
+## 1. Назначение
 
-«Умный кредитный кабинет предпринимателя» — веб-приложение для подбора кредитных предложений и подачи заявок на кредитование малого бизнеса.
+«Умный кредитный кабинет предпринимателя» — веб-приложение для подбора кредитных предложений и подачи заявок на кредитование малого бизнеса. Пользователь регистрируется, заполняет профиль бизнеса, сравнивает предложения, создаёт и отправляет заявку. Сотрудник банка рассматривает заявку и принимает демонстрационное решение.
 
-Система позволяет пользователю зарегистрироваться, заполнить профиль бизнеса, подобрать подходящие кредитные продукты, оформить и отправить заявку, а сотруднику банка — рассмотреть её и принять решение.
-
-Проект реализуется в формате MVP для демонстрации полного цикла. Реальные банковские и государственные интеграции не используются.
+MVP не использует реальные банковские или государственные интеграции. Данные о продуктах и результат обработки являются демонстрационными.
 
 ## 2. Технологический стек
 
 | Компонент | Технология | Назначение |
 |---|---|---|
-| Frontend | React, TypeScript, Vite | Пользовательский интерфейс |
+| Frontend | React, TypeScript, Vite | Пользовательский интерфейс (в разработке) |
 | Backend | Python 3.13, FastAPI | REST API и бизнес-логика |
-| Валидация | Pydantic | Схемы запросов и ответов |
+| Валидация | Pydantic v2 | Схемы запросов и ответов |
 | БД | PostgreSQL | Хранение данных |
-| ORM | SQLAlchemy | Работа с данными |
+| ORM | SQLAlchemy 2.x | Доступ к данным |
 | Миграции | Alembic | Управление схемой БД |
-| Аутентификация | JWT, Argon2 | Авторизация и хеширование паролей |
-| Тесты | pytest | 84 теста |
-| Документация API | OpenAPI, Swagger UI | `/docs` |
+| Аутентификация | JWT (PyJWT), Argon2 (pwdlib) | Токены, хеширование паролей |
+| Тесты | pytest (84 теста) | Автоматическая проверка |
+| API-документация | OpenAPI, Swagger UI | `/docs`, `/openapi.json` |
 | Запуск | Docker, Docker Compose | Воспроизводимый запуск |
 
-## 3. Общая архитектура
+## 3. Архитектурная схема
 
-Три основных компонента:
-1. **Frontend** — интерфейс, отправляет HTTP-запросы к backend.
-2. **Backend** — REST API, бизнес-логика, работа с БД.
-3. **PostgreSQL** — данные пользователей, заявок, продуктов, истории, профилей, рекомендаций.
+```mermaid
+flowchart LR
+    U[Предприниматель / сотрудник] -->|HTTP, браузер| F[Frontend: React + TypeScript]
+    F -->|REST API, JSON, Bearer JWT| A[Backend: FastAPI]
+    A --> S[Сервисы: calculator, application_processing, application_history, recommendation]
+    S --> ORM[SQLAlchemy]
+    ORM --> DB[(PostgreSQL)]
+    A --> DOC[OpenAPI / Swagger UI]
+    T[pytest: 84 теста] --> A
+    M[Alembic: 12 миграций] --> DB
+    D[Docker Compose] --> A
+    D --> DB
+```
 
-Внешние банковские интеграции отсутствуют. Решение по заявке — демонстрационное.
+## 4. Основные сценарии
 
-## 4. Структура backend (актуальная)
+1. Пользователь регистрируется и входит (JWT).
+2. Просматривает продукты и рассчитывает платёж (`/calculator/calculate`, `/calculator/compare`).
+3. Заполняет профиль бизнеса (`PUT /business-profile`).
+4. Запрашивает рекомендации (`POST /recommendations`).
+5. Создаёт черновик заявки (`POST /applications`), редактирует (`PATCH`), отправляет (`/submit`).
+6. Backend считает платежи, ставит `preliminary_result`, пишет историю, ставит `submitted`.
+7. Staff переводит в `checking`/`needs_info`/`alternative_offer`/`approved`/`rejected`.
+8. Пользователь видит свою заявку и историю (`GET /applications/{id}/history`).
+
+## 5. Безопасность
+
+- Все защищённые эндпоинты требуют `Authorization: Bearer <token>`.
+- Пароли — Argon2, не открытым текстом.
+- Пользователь видит только свои заявки, профиль, подборы.
+- Staff-эндпоинты требуют роль `staff`/`admin` (проверка на backend).
+- `preliminary_result` — не банковское решение.
+- Реальных платежей нет.
+
+## 6. Структура backend (актуальная)
 
 ```text
 backend/
 ├── app/
 │   ├── api/
-│   │   ├── auth.py              # регистрация, вход, /me
-│   │   ├── applications.py      # CRUD, submit, staff-переходы статусов
-│   │   ├── products.py          # каталог
-│   │   ├── calculator.py        # расчёт и сравнение
-│   │   ├── business_profile.py  # GET/PUT профиля бизнеса
-│   │   └── recommendations.py   # подбор предложений
+│   │   ├── auth.py
+│   │   ├── applications.py
+│   │   ├── products.py
+│   │   ├── calculator.py
+│   │   ├── business_profile.py
+│   │   └── recommendations.py
 │   ├── core/
-│   │   ├── config.py            # настройки (.env)
-│   │   ├── database.py          # engine, Session, Base
-│   │   ├── json_type.py         # JSONB для Postgres / JSON для SQLite
-│   │   └── security.py          # JWT, хеширование
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── json_type.py
+│   │   └── security.py
 │   ├── models/
-│   │   ├── user.py              # User
-│   │   ├── credit_application.py # CreditApplication
-│   │   ├── credit_product.py     # CreditProduct
-│   │   ├── application_history.py # ApplicationHistory
-│   │   ├── business_profile.py   # BusinessProfile
-│   │   └── recommendation.py     # Recommendation, RecommendationItem
+│   │   ├── user.py
+│   │   ├── credit_application.py
+│   │   ├── credit_product.py
+│   │   ├── application_history.py
+│   │   ├── business_profile.py
+│   │   └── recommendation.py
 │   ├── schemas/
 │   │   ├── auth.py
 │   │   ├── credit_application.py
@@ -66,18 +91,48 @@ backend/
 │   │   ├── business_profile.py
 │   │   └── recommendation.py
 │   ├── services/
-│   │   ├── auth.py               # регистрация, аутентификация
-│   │   ├── calculator.py         # аннуитетный расчёт
-│   │   ├── application_processing.py # submit + preliminary_result
-│   │   ├── application_history.py    # record_status_change
-│   │   └── recommendation.py     # build_recommendations + match_score
-│   └── main.py                   # FastAPI, CORS, подключение роутеров
+│   │   ├── auth.py
+│   │   ├── calculator.py
+│   │   ├── application_processing.py
+│   │   ├── application_history.py
+│   │   └── recommendation.py
+│   └── main.py
 ├── alembic/
-│   └── versions/                 # 12 миграций
+│   └── versions/     # 12 миграций
 ├── scripts/
-│   └── seed_products.py          # 3 демо-продукта
-├── tests/                        # 84 теста
+│   └── seed_products.py
+├── tests/            # 84 теста
 ├── Dockerfile
 ├── .dockerignore
 ├── alembic.ini
 └── requirements.txt
+```
+
+## 7. API и запуск
+
+Префикс API: `/api/v1`. После запуска backend:
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
+
+### Docker (рекомендуется)
+
+```powershell
+docker compose up --build
+```
+
+Backend автоматически применяет миграции и заливает демо-продукты.
+
+### Локально
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m scripts.seed_products
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+Подробности — в `README-setup.md`.
+
+## 8. Тестирование
+
+84 теста (`pytest -v`), SQLite in-memory с `StaticPool`, `JSONType` (JSONB для Postgres / JSON для SQLite). Покрыто: auth, applications, processing, history, statuses, business profile, recommendations, calculator, products, security.
