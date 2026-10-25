@@ -1,5 +1,4 @@
-
-"""Application settings loaded from environment variables and .env."""
+"""Application settings loaded from environment variables and .env file."""
 
 from functools import lru_cache
 
@@ -17,7 +16,9 @@ class Settings(BaseSettings):
         "postgresql+psycopg://smart_credit:change_me@localhost:5432/smart_credit"
     )
 
-    jwt_secret_key: SecretStr = SecretStr("replace_me_before_use")
+    jwt_secret_key: SecretStr = SecretStr(
+        "CHANGE_ME_generate_with_python_secrets_token_urlsafe_48"
+    )
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=60, gt=0)
 

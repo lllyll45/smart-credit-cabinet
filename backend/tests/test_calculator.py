@@ -1,4 +1,3 @@
-
 from decimal import Decimal
 
 import pytest
@@ -40,10 +39,6 @@ def test_calculate_credit_with_interest():
         (Decimal("1000"), Decimal("12"), -1),
     ],
 )
-def test_calculate_credit_rejects_invalid_input(
-    amount,
-    annual_rate,
-    term_months,
-):
+def test_calculate_credit_rejects_invalid_input(amount, annual_rate, term_months):
     with pytest.raises(ValueError):
         calculate_credit(amount, annual_rate, term_months)
