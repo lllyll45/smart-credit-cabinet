@@ -4,6 +4,7 @@ import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
 import Loader from '../components/ui/Loader'
 import { useAuth } from '../hooks/useAuth'
+import axios from 'axios'
 
 export default function RegisterPage() {
   const { register, user, loading } = useAuth()
@@ -36,8 +37,25 @@ export default function RegisterPage() {
     try {
       await register(name, email, password)
       navigate('/dashboard', { replace: true })
-    } catch {
-      setError('Не удалось зарегистрироваться. Проверьте данные и доступность сервера.')
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status
+        const detail = err.response?.data?.detail
+
+        if (status === 422) {
+          setError('Введите корректный email и проверьте заполнение полей.')
+        } else if (status === 409) {
+          setError('Пользователь с таким email уже существует.')
+        } else if (!err.response) {
+          setError('Не удалось связаться с сервером. Попробуйте позже.')
+        } else if (typeof detail === 'string') {
+          setError(detail)
+        } else {
+          setError('Не удалось зарегистрироваться. Попробуйте позже.')
+        }
+      } else {
+        setError('Произошла непредвиденная ошибка. Попробуйте позже.')
+      }
     } finally {
       setSubmitting(false)
     }
