@@ -15,7 +15,11 @@ export interface RegisterCredentials {
 export interface AuthContextValue {
   user: User | null
   loading: boolean
+  isAuthenticated: boolean
+  isStaff: boolean
+  isAdmin: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string) => Promise<void>
   logout: () => void
+  refreshUser: () => Promise<void>
 }

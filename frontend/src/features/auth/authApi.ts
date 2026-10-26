@@ -11,25 +11,18 @@ export async function loginRequest(
   password: string,
 ): Promise<void> {
   const body = new URLSearchParams()
-
   body.set('username', email)
   body.set('password', password)
 
-  const response = await api.post<LoginResponse>(
-    '/auth/login',
-    body,
-    {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    },
-  )
+  const { data } = await api.post<LoginResponse>('/auth/login', body, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  })
 
-  if (!response.data.access_token) {
+  if (!data.access_token) {
     throw new Error('Сервер не вернул токен авторизации.')
   }
 
-  localStorage.setItem(TOKEN_KEY, response.data.access_token)
+  localStorage.setItem(TOKEN_KEY, data.access_token)
 }
 
 export async function registerRequest(
@@ -40,14 +33,13 @@ export async function registerRequest(
 }
 
 export async function fetchCurrentUser(): Promise<User> {
-  const response = await api.get<User>('/auth/me')
-  return response.data
+  const { data } = await api.get<User>('/auth/me')
+  return data
 }
 
 export function clearAuthToken(): void {
   localStorage.removeItem(TOKEN_KEY)
 }
-
 
 const authApi = {
   loginRequest,

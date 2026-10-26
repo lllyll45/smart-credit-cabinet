@@ -4,56 +4,34 @@ import PageLayout from '../components/layout/PageLayout'
 import Loader from '../components/ui/Loader'
 import { formatCurrency } from '../utils/formatCurrency'
 import { formatDate } from '../utils/formatDate'
-import { api } from "../services/apiClients"
-
-type ApplicationItem = {
-  id: number | string
-  status?: string
-  amount?: number
-  created_at?: string
-  product_name?: string
-}
-
-function getStatusLabel(status?: string) {
-  const labels: Record<string, string> = {
-    draft: 'Черновик',
-    pending: 'На рассмотрении',
-    submitted: 'Отправлена',
-    approved: 'Одобрена',
-    rejected: 'Отклонена',
-    cancelled: 'Отменена',
-  }
-
-  return labels[status?.toLowerCase() ?? ''] ?? status ?? 'Не указан'
-}
-
-function getStatusClass(status?: string) {
-  const normalized = status?.trim().toLowerCase()
-
-  const classes: Record<string, string> = {
-    draft: 'status-draft',
-    pending: 'status-pending',
-    submitted: 'status-submitted',
-    approved: 'status-approved',
-    rejected: 'status-rejected',
-    cancelled: 'status-rejected',
-  }
-
-  return classes[normalized ?? ''] ?? 'status-unknown'
-}
+import { api } from '../services/apiClients'
+import { statusClass, statusLabel } from '../features/applications/statuses'
+import type { Application, CreditProduct } from '../types/comon'
 
 export default function ApplicationsPage() {
-  const [items, setItems] = useState<ApplicationItem[]>([])
+  const [items, setItems] = useState<Application[]>([])
+  const [products, setProducts] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
     let active = true
 
-    api.get('/applications')
-      .then(({ data }) => {
-        const list = Array.isArray(data) ? data : data.items ?? data.applications ?? []
-        if (active) setItems(list)
+    Promise.all([
+      api.get<Application[]>('/applications'),
+      api.get<CreditProduct[]>('/products'),
+    ])
+      .then(([appsRes, productsRes]) => {
+        if (!active) return
+
+        const apps = Array.isArray(appsRes.data) ? appsRes.data : []
+        setItems(apps)
+
+        const productMap: Record<number, string> = {}
+        for (const p of productsRes.data) {
+          productMap[p.id] = `${p.bank_name} — ${p.name}`
+        }
+        setProducts(productMap)
       })
       .catch(() => {
         if (active) setError('Не удалось загрузить заявки.')
@@ -105,14 +83,21 @@ export default function ApplicationsPage() {
             >
               <div>
                 <strong>Заявка №{item.id}</strong>
-                <p>{item.product_name || 'Кредитный продукт'}</p>
-                {item.created_at && <small>{formatDate(item.created_at)}</small>}
+                <p>
+                  {products[item.credit_product_id] ??
+                    `Продукт #${item.credit_product_id}`}
+                </p>
+                {item.created_at && (
+                  <small>{formatDate(item.created_at)}</small>
+                )}
               </div>
               <div>
-                {item.amount != null && <strong>{formatCurrency(item.amount)}</strong>}
-                <span className={`status-pill ${getStatusClass(item.status)}`}>
-  {getStatusLabel(item.status)}
-</span>
+                {item.amount != null && (
+                  <strong>{formatCurrency(item.amount)}</strong>
+                )}
+                <span className={`status-pill ${statusClass(item.status)}`}>
+                  {statusLabel(item.status)}
+                </span>
               </div>
             </Link>
           ))}

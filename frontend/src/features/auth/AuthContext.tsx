@@ -9,7 +9,7 @@ import {
 import authApi from './authApi'
 import type { User } from './authTypes'
 import { AuthContext } from './auth'
-import type { AuthContextValue } from './auth'
+import type { AuthContextValue } from './authTypes'
 
 const TOKEN_KEY = 'smart-credit-access-token'
 
@@ -26,7 +26,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null)
       return
     }
-
     try {
       const currentUser = await authApi.fetchCurrentUser()
       setUser(currentUser)
@@ -38,19 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true
-
-    async function initialize() {
+    ;(async () => {
       try {
         await refreshUser()
       } finally {
-        if (active) {
-          setLoading(false)
-        }
+        if (active) setLoading(false)
       }
-    }
-
-    void initialize()
-
+    })()
     return () => {
       active = false
     }
@@ -62,13 +55,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(currentUser)
   }, [])
 
-const register = useCallback(
-  async (_name: string, email: string, password: string) => {
-    await authApi.registerRequest(email, password)
-    await login(email, password)
-  },
-  [login],
-)
+  const register = useCallback(
+    async (email: string, password: string) => {
+      await authApi.registerRequest(email, password)
+      await login(email, password)
+    },
+    [login],
+  )
 
   const logout = useCallback(() => {
     authApi.clearAuthToken()
@@ -80,6 +73,8 @@ const register = useCallback(
       user,
       loading,
       isAuthenticated: Boolean(user),
+      isStaff: user?.role === 'staff' || user?.role === 'admin',
+      isAdmin: user?.role === 'admin',
       login,
       register,
       logout,
@@ -88,9 +83,5 @@ const register = useCallback(
     [user, loading, login, register, logout, refreshUser],
   )
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

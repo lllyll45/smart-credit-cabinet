@@ -1,6 +1,12 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 
+const ROLE_LABEL: Record<string, string> = {
+  client: 'Клиент',
+  staff: 'Сотрудник',
+  admin: 'Администратор',
+}
+
 export default function Header() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
@@ -18,9 +24,13 @@ export default function Header() {
       </div>
 
       <div className="account-actions">
-        {user?.email && (
-          <span className="user-email">{user.email}</span>
+        {user?.role && (
+          <span className="role-badge">
+            {ROLE_LABEL[user.role] ?? user.role}
+          </span>
         )}
+
+        {user?.email && <span className="user-email">{user.email}</span>}
 
         {user ? (
           <button

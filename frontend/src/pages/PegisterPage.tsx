@@ -9,7 +9,6 @@ import axios from 'axios'
 export default function RegisterPage() {
   const { register, user, loading } = useAuth()
   const navigate = useNavigate()
-  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -35,7 +34,7 @@ export default function RegisterPage() {
 
     setSubmitting(true)
     try {
-      await register(name, email, password)
+      await register(email, password)
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
@@ -76,14 +75,6 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit}>
-          <Input
-            label="Имя"
-            name="name"
-            autoComplete="name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-          />
           <Input
             label="Email"
             name="email"

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import type { CreditProduct } from './productsTypes'
+import type { CreditProduct } from '../../types/comon'
 import { formatCurrency } from '../../utils/formatCurrency'
 
 type ProductCardProps = {
@@ -7,8 +7,6 @@ type ProductCardProps = {
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
-  const id = String(product.id)
-
   return (
     <article className="content-card product-card">
       <div className="product-rate">
@@ -18,30 +16,29 @@ export default function ProductCard({ product }: ProductCardProps) {
       </div>
 
       <h3>{product.name}</h3>
-      <p>{product.description || 'Подробности доступны на странице продукта.'}</p>
+      <p className="product-conditions">
+        {product.bank_name}
+        {product.additional_conditions
+          ? ` · ${product.additional_conditions}`
+          : ''}
+      </p>
 
       <div className="details-list">
-        {product.min_amount != null && (
-          <div>
-            <span>От</span>
-            <strong>{formatCurrency(product.min_amount)}</strong>
-          </div>
-        )}
-        {product.max_amount != null && (
-          <div>
-            <span>До</span>
-            <strong>{formatCurrency(product.max_amount)}</strong>
-          </div>
-        )}
-        {product.max_term_months != null && (
-          <div>
-            <span>Срок</span>
-            <strong>{product.max_term_months} мес.</strong>
-          </div>
-        )}
+        <div>
+          <span>От</span>
+          <strong>{formatCurrency(product.min_amount)}</strong>
+        </div>
+        <div>
+          <span>До</span>
+          <strong>{formatCurrency(product.max_amount)}</strong>
+        </div>
+        <div>
+          <span>Срок</span>
+          <strong>до {product.max_term_months} мес.</strong>
+        </div>
       </div>
 
-      <Link className="primary-button" to={`/products/${id}`}>
+      <Link className="primary-button" to={`/products/${product.id}`}>
         Подробнее
       </Link>
     </article>
