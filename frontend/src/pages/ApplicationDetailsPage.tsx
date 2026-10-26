@@ -21,23 +21,32 @@ function formatMoney(value?: string | number | null) {
   return formatCurrency(Number(value))
 }
 
-function formatEmployment(value?: string | null) {
+function formatLegalForm(value?: string | null) {
   if (!value) return 'Не указано'
+
+  const normalized = value.trim().toLowerCase()
+
   const labels: Record<string, string> = {
-    employed: 'Работа по найму',
+    ip: 'ИП',
+    individual_entrepreneur: 'ИП',
+    'индивидуальный предприниматель': 'ИП',
+    ооо: 'ООО',
+    llc: 'ООО',
+    ao: 'АО',
+    пао: 'ПАО',
+    зао: 'ЗАО',
     self_employed: 'Самозанятый',
-    entrepreneur: 'Предприниматель',
-    unemployed: 'Безработный',
-    student: 'Студент',
-    retired: 'Пенсионер',
+    самозанятый: 'Самозанятый',
   }
-  return labels[value.toLowerCase()] ?? value
+
+  return labels[normalized] ?? value
 }
 
 function formatDateTime(value?: string | null) {
   if (!value) return 'Не указано'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
+
   return new Intl.DateTimeFormat('ru-RU', {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -54,6 +63,7 @@ export default function ApplicationDetailsPage() {
 
   async function loadAll() {
     if (!id) return
+
     const { data } = await api.get<Application>(`/applications/${id}`)
     setItem(data)
 
@@ -75,6 +85,7 @@ export default function ApplicationDetailsPage() {
         setLoading(false)
         return
       }
+
       try {
         const { data } = await api.get<Application>(`/applications/${id}`)
         if (!active) return
@@ -84,7 +95,9 @@ export default function ApplicationDetailsPage() {
           const hist = await api.get<ApplicationHistoryEntry[]>(
             `/applications/${id}/history`,
           )
-          if (active) setHistory(Array.isArray(hist.data) ? hist.data : [])
+          if (active) {
+            setHistory(Array.isArray(hist.data) ? hist.data : [])
+          }
         } catch {
           if (active) setHistory([])
         }
@@ -96,6 +109,7 @@ export default function ApplicationDetailsPage() {
     }
 
     void load()
+
     return () => {
       active = false
     }
@@ -104,6 +118,7 @@ export default function ApplicationDetailsPage() {
   async function submitApplication() {
     setSubmitting(true)
     setError('')
+
     try {
       await api.post(`/applications/${id}/submit`)
       await loadAll()
@@ -153,6 +168,7 @@ export default function ApplicationDetailsPage() {
                 <span>Сумма кредита</span>
                 <strong>{formatMoney(item.amount)}</strong>
               </div>
+
               <div>
                 <span>Срок кредита</span>
                 <strong>
@@ -161,13 +177,19 @@ export default function ApplicationDetailsPage() {
                     : 'Не указано'}
                 </strong>
               </div>
+
               <div>
                 <span>Цель кредита</span>
                 <strong>{item.purpose || 'Не указана'}</strong>
               </div>
+
               <div>
                 <span>Продукт</span>
-                <strong>#{item.credit_product_id}</strong>
+                <strong>
+                  {item.credit_product_id != null
+                    ? `#${item.credit_product_id}`
+                    : 'Не указан'}
+                </strong>
               </div>
             </div>
           </section>
@@ -176,28 +198,58 @@ export default function ApplicationDetailsPage() {
             <h2>Финансовая информация</h2>
             <div className="details-list">
               <div>
-                <span>Ежемесячный доход</span>
+                <span>Ежемесячная выручка бизнеса</span>
                 <strong>{formatMoney(item.monthly_income)}</strong>
               </div>
+
               <div>
                 <span>Предварительный платёж</span>
                 <strong>{formatMoney(item.preliminary_result)}</strong>
               </div>
+
               <div>
                 <span>Ежемесячный платёж</span>
                 <strong>{formatMoney(item.monthly_payment)}</strong>
               </div>
+
               <div>
                 <span>Общая сумма выплат</span>
                 <strong>{formatMoney(item.total_payment)}</strong>
               </div>
+
               <div>
                 <span>Переплата</span>
                 <strong>{formatMoney(item.overpayment)}</strong>
               </div>
+            </div>
+          </section>
+
+          <section className="content-card application-details-card">
+            <h2>Информация о бизнесе</h2>
+            <div className="details-list">
               <div>
-                <span>Тип занятости</span>
-                <strong>{formatEmployment(item.employment)}</strong>
+                <span>Организационно-правовая форма</span>
+                <strong>{formatLegalForm(item.legal_form)}</strong>
+              </div>
+
+              <div>
+                <span>Название организации</span>
+                <strong>{item.business_name || 'Не указано'}</strong>
+              </div>
+
+              <div>
+                <span>Отрасль</span>
+                <strong>{item.industry || 'Не указана'}</strong>
+              </div>
+
+              <div>
+                <span>Регион</span>
+                <strong>{item.region || 'Не указан'}</strong>
+              </div>
+
+              <div>
+                <span>Дата начала деятельности</span>
+                <strong>{formatDateTime(item.business_start_date)}</strong>
               </div>
             </div>
           </section>
@@ -208,9 +260,7 @@ export default function ApplicationDetailsPage() {
               <div>
                 <span>Статус</span>
                 <strong>
-                  <span
-                    className={`status-pill ${statusClass(item.status)}`}
-                  >
+                  <span className={`status-pill ${statusClass(item.status)}`}>
                     {statusLabel(item.status)}
                   </span>
                 </strong>
@@ -260,6 +310,7 @@ export default function ApplicationDetailsPage() {
                 <span>Дата создания</span>
                 <strong>{formatDateTime(item.created_at)}</strong>
               </div>
+
               <div>
                 <span>Последнее изменение</span>
                 <strong>{formatDateTime(item.updated_at)}</strong>

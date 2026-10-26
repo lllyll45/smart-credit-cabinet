@@ -26,15 +26,44 @@ class CreditApplication(Base):
         index=True,
     )
 
-    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    term_months: Mapped[int] = mapped_column(nullable=False)
-    purpose: Mapped[str] = mapped_column(String(255), nullable=False)
-
-    monthly_income: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
     )
+
+    term_months: Mapped[int] = mapped_column(nullable=False)
+
+    purpose: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    # Financial information about the business
+    monthly_income: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    # Business borrower information
+    organization_type: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    organization_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    inn: Mapped[str | None] = mapped_column(
+        String(12),
+        nullable=True,
+    )
+
+    # Legacy field retained for compatibility with existing applications
     employment: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
+        String(255),
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(
@@ -44,10 +73,17 @@ class CreditApplication(Base):
         server_default="draft",
     )
 
-    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    comment: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
 
-    # Algorithm assessment, separate from the final staff decision.
+    decision_comment: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    # Algorithm assessment, separate from the final staff decision
     preliminary_result: Mapped[str | None] = mapped_column(
         String(50),
         nullable=True,
@@ -55,13 +91,18 @@ class CreditApplication(Base):
     )
 
     monthly_payment: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
+        Numeric(12, 2),
+        nullable=True,
     )
+
     total_payment: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
+        Numeric(12, 2),
+        nullable=True,
     )
+
     overpayment: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2), nullable=True
+        Numeric(12, 2),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -69,6 +110,7 @@ class CreditApplication(Base):
         server_default=func.now(),
         nullable=False,
     )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -76,7 +118,11 @@ class CreditApplication(Base):
         nullable=False,
     )
 
-    user = relationship("User", back_populates="applications")
+    user = relationship(
+        "User",
+        back_populates="applications",
+    )
+
     credit_product = relationship(
         "CreditProduct",
         back_populates="applications",

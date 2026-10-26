@@ -29,8 +29,6 @@ export default function ApplicationForm({
   const [amount, setAmount] = useState('500000')
   const [term, setTerm] = useState('36')
   const [purpose, setPurpose] = useState('')
-  const [monthlyIncome, setMonthlyIncome] = useState('')
-  const [employment, setEmployment] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingProducts, setLoadingProducts] = useState(true)
@@ -45,6 +43,7 @@ export default function ApplicationForm({
 
         const activeProducts = data.filter((p) => p.is_active !== false)
         setProducts(activeProducts)
+
         setSelectedProductId((prev) => {
           if (
             initialProductId &&
@@ -52,7 +51,11 @@ export default function ApplicationForm({
           ) {
             return String(initialProductId)
           }
-          if (prev) return prev
+
+          if (prev && activeProducts.some((p) => String(p.id) === prev)) {
+            return prev
+          }
+
           return activeProducts[0] ? String(activeProducts[0].id) : ''
         })
       } catch {
@@ -84,7 +87,6 @@ export default function ApplicationForm({
     const parsedProductId = Number(selectedProductId)
     const parsedAmount = Number(amount)
     const parsedTerm = Number(term)
-    const parsedIncome = Number(monthlyIncome)
 
     if (!selectedProduct) {
       setError('Выберите кредитный продукт.')
@@ -117,18 +119,8 @@ export default function ApplicationForm({
       return
     }
 
-    if (!Number.isFinite(parsedIncome) || parsedIncome <= 0) {
-      setError('Укажите ежемесячный доход.')
-      return
-    }
-
-    if (!purpose.trim()) {
-      setError('Укажите цель кредита.')
-      return
-    }
-
-    if (!employment) {
-      setError('Выберите тип занятости.')
+    if (purpose.trim().length < 3) {
+      setError('Укажите цель кредита (не менее 3 символов).')
       return
     }
 
@@ -140,8 +132,6 @@ export default function ApplicationForm({
         amount: parsedAmount,
         term_months: parsedTerm,
         purpose: purpose.trim(),
-        monthly_income: parsedIncome,
-        employment,
       })
     } catch (err) {
       setError(
@@ -156,7 +146,7 @@ export default function ApplicationForm({
     <form className="content-card" onSubmit={handleSubmit}>
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Данные заёмщика</p>
+          <p className="eyebrow">Кредитование бизнеса</p>
           <h2>Параметры кредитной заявки</h2>
         </div>
       </div>
@@ -202,56 +192,36 @@ export default function ApplicationForm({
               label="Срок кредита, месяцев"
               type="number"
               min={selectedProduct?.min_term_months ?? 1}
-              max={selectedProduct?.max_term_months ?? 600}
+              max={selectedProduct?.max_term_months ?? 360}
               value={term}
               onChange={(event) => setTerm(event.target.value)}
               required
             />
 
-            <Input
-              label="Ежемесячный доход, ₽"
-              type="number"
-              min="1"
-              value={monthlyIncome}
-              onChange={(event) => setMonthlyIncome(event.target.value)}
-              required
-            />
-
             <div className="form-field">
-              <label htmlFor="employment">Тип занятости</label>
-              <select
-                id="employment"
-                className="input"
-                value={employment}
-                onChange={(event) => setEmployment(event.target.value)}
-                required
-              >
-                <option value="">Выберите тип занятости</option>
-                <option value="employed">Работа по найму</option>
-                <option value="self_employed">Самозанятый</option>
-                <option value="entrepreneur">Индивидуальный предприниматель</option>
-                <option value="unemployed">Не работаю</option>
-              </select>
-            </div>
-
-            <div className="form-field">
-              <label htmlFor="purpose">Цель кредита</label>
+              <label htmlFor="purpose">Цель кредитования бизнеса</label>
               <textarea
                 id="purpose"
                 className="input"
                 rows={3}
                 value={purpose}
                 onChange={(event) => setPurpose(event.target.value)}
-                placeholder="Например, пополнение оборотных средств"
+                placeholder="Например, закупка оборудования или пополнение оборотных средств"
                 required
               />
             </div>
           </div>
 
+          <p className="notice">
+            Данные организации и среднемесячная выручка берутся из профиля
+            бизнеса.
+          </p>
+
           {selectedProduct && (
             <p className="notice">
               Доступная сумма: {selectedProduct.min_amount}–
-              {selectedProduct.max_amount} ₽. Срок: {selectedProduct.min_term_months}–
+              {selectedProduct.max_amount} ₽. Срок:{' '}
+              {selectedProduct.min_term_months}–
               {selectedProduct.max_term_months} месяцев.
             </p>
           )}
@@ -270,3 +240,4 @@ export default function ApplicationForm({
     </form>
   )
 }
+

@@ -1,7 +1,6 @@
-
 """Pydantic schemas for credit applications."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,8 +11,6 @@ class CreditApplicationCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     term_months: int = Field(gt=0, le=360)
     purpose: str = Field(min_length=3, max_length=255)
-    monthly_income: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
-    employment: str = Field(min_length=2, max_length=100)
 
 
 class CreditApplicationResponse(BaseModel):
@@ -37,19 +34,25 @@ class CreditApplicationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Данные бизнес-профиля владельца заявки.
+    business_name: str | None = None
+    legal_form: str | None = None
+    industry: str | None = None
+    region: str | None = None
+    business_start_date: date | None = None
+
 
 class CreditApplicationUpdate(BaseModel):
     credit_product_id: int | None = Field(default=None, gt=0)
     amount: Decimal | None = Field(
-        default=None, gt=0, max_digits=12, decimal_places=2
+        default=None,
+        gt=0,
+        max_digits=12,
+        decimal_places=2,
     )
     term_months: int | None = Field(default=None, gt=0, le=360)
-    purpose: str | None = Field(default=None, min_length=3, max_length=255)
-    monthly_income: Decimal | None = Field(
-        default=None, gt=0, max_digits=12, decimal_places=2
+    purpose: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=255,
     )
-    employment: str | None = Field(
-        default=None, min_length=2, max_length=100
-    )
-
-    
