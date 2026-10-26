@@ -1,90 +1,159 @@
-# Тестовые сценарии — Smart Credit Cabinet
+# Сценарии тестирования Smart Credit Cabinet
 
-## 1. Назначение
+## Назначение и статус проверки
 
-Документ содержит ручные сценарии приёмочной проверки. **Все 84 сценария автоматизированы** в `backend/tests/` и проходят (`pytest -v`). Ручные проверки через Swagger — для демонстрации.
+Документ описывает ручную проверку текущего backend через HTTP API и фактическое покрытие автоматическими тестами из `backend/tests/`. Сценарии сверены с обработчиками `backend/app/api/`, схемами и сервисами. Документ не является заявлением о прохождении всех тестов.
 
-## 2. Подготовка
+При последнем контрольном запуске `pytest -q` 26 октября 2026 года **все 84 теста прошли**. Тесты создания заявок подготавливают обязательный профиль бизнеса с месячной выручкой. В выводе pytest остался одно предупреждение о депрекации `httpx` в Starlette TestClient.
 
-1. `docker compose up --build` (или локально: миграции + `seed_products` + uvicorn).
-2. Применить миграции Alembic (в Docker — автоматически).
-3. Заполнить каталог: `python -m scripts.seed_products` (в Docker — автоматически).
-4. Проверить `/docs` и `/openapi.json`.
-5. Для staff-сценариев создать пользователя и выставить роль `staff` в БД.
-6. Для каждого сценария, меняющего статус, использовать свежую заявку.
+## Подготовка
 
-## 3. Сценарии
+### Автоматические тесты
 
-| ID | Сценарий | Действия | Ожидаемый результат | Автотест |
-|---|---|---|---|---|
-| TC-01 | Регистрация | Валидные email и пароль ≥ 8 | 201, пользователь создан | `test_register_success` |
-| TC-02 | Валидация пароля | Пароль < 8 | 422 | `test_register_short_password` |
-| TC-03 | Повторный email | Тот же email | 409 | `test_register_duplicate_email` |
-| TC-04 | Вход | Корректные данные | 200 + JWT | `test_login_success` |
-| TC-05 | Неверный пароль | Неправильный пароль | 401 | `test_login_wrong_password` |
-| TC-06 | Неизвестный email | Логин несуществующего | 401 | `test_login_unknown_email` |
-| TC-07 | Текущий пользователь | `/auth/me` с токеном | 200, данные | `test_me_with_token` |
-| TC-08 | Без токена | Защищённый без токена | 401 | `test_me_without_token` |
-| TC-09 | Битый токен | Невалидный JWT | 401 | `test_me_with_invalid_token` |
-| TC-10 | Каталог | GET /products | 200, активные | `test_get_products_returns_active_products` |
-| TC-11 | Детали продукта | GET /products/{id} | 200 | `test_get_product_by_id` |
-| TC-12 | Несуществующий продукт | GET /products/999999 | 404 | `test_get_missing_product_returns_404` |
-| TC-13 | Неактивный продукт | GET неактивного | 404 | `test_get_inactive_product_returns_404` |
-| TC-14 | Расчёт платежа | calculate | 200, monthly_payment | `test_calculate_credit_returns_result` |
-| TC-15 | Несуществующий продукт | calculate 999999 | 404 | `test_calculate_missing_product_returns_404` |
-| TC-16 | Неактивный продукт | calculate неактивного | 404 | `test_calculate_inactive_product_returns_404` |
-| TC-17 | Недопустимая сумма | amount вне лимита | 422 | `test_calculate_out_of_range_amount_returns_422` |
-| TC-18 | Сравнение | compare | 200, sorted by total_payment | `test_compare_returns_products_sorted_by_total_payment` |
-| TC-19 | Сравнение пустое | amount 900000 | products=[] | `test_compare_excludes_products_outside_limits` |
-| TC-20 | Невалидный запрос | amount=-100 | 422 | `test_calculator_rejects_invalid_request` |
-| TC-21 | Фикс. комиссия | commission_amount=5000 | commission="5000.00" | `test_calculate_with_fixed_commission_amount` |
-| TC-22 | Disclaimer | ответ содержит disclaimer | да | `test_calculate_disclaimer_present` |
-| TC-23 | Создание заявки | Валидные данные | 201, draft | `test_create_application_success` |
-| TC-24 | Несуществующий продукт | credit_product_id=999999 | 422 | `test_create_with_missing_product` |
-| TC-25 | Неактивный продукт | неактивный | 422 | `test_create_with_inactive_product` |
-| TC-26 | Сумма вне диапазона | amount вне лимита | 422 | `test_create_amount_out_of_range` |
-| TC-27 | Срок вне диапазона | term_months вне лимита | 422 | `test_create_term_out_of_range` |
-| TC-28 | Список только своих | user A не видит B | 1 заявка у каждого | `test_list_returns_only_own_applications` |
-| TC-29 | Патч черновика | PATCH draft | 200, изменения | `test_patch_draft_success` |
-| TC-30 | Патч submitted | PATCH submitted | 409 | `test_patch_submitted_returns_409` |
-| TC-31 | Submit likely_eligible | income большой | 200, submitted, likely_eligible | `test_submit_sets_likely_eligible` |
-| TC-32 | Submit high_debt_burden | income маленький | 200, submitted, high_debt_burden | `test_submit_sets_high_debt_burden` |
-| TC-33 | Submit без продукта | credit_product_id=None | 422 | `test_submit_without_product` |
-| TC-34 | История при создании | GET /history после create | 1 запись: draft | `test_history_recorded_on_create` |
-| TC-35 | История при submit | GET /history после submit | 2 записи: draft, submitted | `test_history_recorded_on_submit` |
-| TC-36 | История 404 | /history/999999 | 404 | `test_history_404_for_missing_application` |
-| TC-37 | История чужая | user B → /history A | 404 | `test_history_404_for_other_user_application` |
-| TC-38 | История без токена | /history без токена | 401 | `test_history_requires_auth` |
-| TC-39 | Staff: проверка | /check | checking | `test_staff_can_move_to_checking` |
-| TC-40 | Client: проверка запрещена | /check клиентом | 403 | `test_client_cannot_move_to_checking` |
-| TC-41 | Staff: request-info | /request-info | needs_info | `test_staff_can_request_info` |
-| TC-42 | Staff: alternative | /offer-alternative | alternative_offer | `test_staff_can_offer_alternative` |
-| TC-43 | История checking | /history после /check | checking в истории | `test_checking_recorded_in_history` |
-| TC-44 | Check draft | /check для draft | 409 | `test_cannot_check_draft_application` |
-| TC-45 | Check повторно | /check дважды | 409 | `test_cannot_check_twice` |
-| TC-46 | Профиль: нет профиля | GET до PUT | 404 | `test_get_business_profile_404_when_missing` |
-| TC-47 | Профиль: создание | PUT | 200, данные | `test_create_business_profile` |
-| TC-48 | Профиль: обновление | PUT дважды | 200, обновлено | `test_update_business_profile` |
-| TC-49 | Профиль: get после put | GET после PUT | 200 | `test_get_business_profile_after_create` |
-| TC-50 | Профиль: невалидный legal_form | legal_form=INVALID | 422 | `test_invalid_legal_form_returns_422` |
-| TC-51 | Профиль: без токена | GET без токена | 401 | `test_business_profile_requires_auth` |
-| TC-52 | Профиль: изоляция | A и B независимы | разные профили | `test_profiles_isolated_between_users` |
-| TC-53 | Рекомендации: создание | POST /recommendations | 201, items | `test_create_recommendation_returns_matching` |
-| TC-54 | Рекомендации: фильтр по цели | purpose=equipment | только Оборудование | `test_recommendation_filters_out_wrong_purpose` |
-| TC-55 | Рекомендации: фильтр по сумме | amount=5000 | items=[] | `test_recommendation_filters_out_wrong_amount` |
-| TC-56 | Рекомендации: get по ID | GET /recommendations/{id} | 200 | `test_get_recommendation_by_id` |
-| TC-57 | Рекомендации: чужие | user B → get A | 404 | `test_get_recommendation_404_for_other_user` |
-| TC-58 | Рекомендации: без токена | POST без токена | 401 | `test_recommendation_requires_auth` |
-| TC-59 | Безопасность: чужая заявка | user B → get A | 404 | `test_cannot_read_other_application` |
-| TC-60 | Безопасность: патч submitted | PATCH submitted | 409 | `test_cannot_edit_submitted_application` |
-| TC-61 | Безопасность: повторный submit | submit дважды | 409 | `test_cannot_resubmit` |
-| TC-62 | Безопасность: 404 | /applications/9999 | 404 | `test_not_found_id` |
-| TC-63 | Безопасность: невалидные данные | amount=-100 | 422 | `test_invalid_data` |
-
-## 4. Автоматические тесты
-
-Полный прогон:
+Из каталога `backend`:
 
 ```powershell
-cd backend
 .\.venv\Scripts\python.exe -m pytest -v
+```
+
+Тесты используют SQLite in-memory и тестовые фикстуры; обычный ручной API-прогон ниже проверяет запущенный backend отдельно. При сообщении о недоступном интерпретаторе создайте виртуальное окружение и установите зависимости из `requirements.txt`.
+
+### Ручная проверка API
+
+1. Настройте переменные окружения и запустите PostgreSQL согласно [инструкции по запуску](../../README-setup.md).
+2. Из каталога `backend` примените миграции, загрузите синтетические демонстрационные данные и запустите API:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m alembic upgrade head
+   .\.venv\Scripts\python.exe -m app.seed
+   .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+   ```
+
+3. Проверьте `http://127.0.0.1:8000/health`, Swagger UI `http://127.0.0.1:8000/docs` и OpenAPI `http://127.0.0.1:8000/openapi.json`.
+4. Для проверки изоляции зарегистрируйте два пользовательских аккаунта. Для staff-сценариев используйте аккаунт, которому роль `staff` или `admin` назначена доверенным способом в тестовой БД: публичного API для повышения роли нет.
+5. Для сценариев заявок создайте профиль каждого пользователя через `PUT /api/v1/business-profile` и укажите `monthly_revenue`. Каждая проверка перехода статуса должна использовать отдельную заявку, если иное не указано.
+
+Примеры ниже используют префикс `/api/v1`. Для защищённых запросов передавайте `Authorization: Bearer <access_token>`. Вход принимает форму `application/x-www-form-urlencoded` с полями `username` (email) и `password`.
+
+## Ручные сценарии
+
+### Регистрация и авторизация
+
+| ID | Действие | Ожидаемый результат |
+|---|---|---|
+| AUTH-01 | Зарегистрировать пользователя с корректным email и паролем длиной 8–128 символов | `201`; возвращены `id`, `email`, `created_at`, но не пароль и не его хеш |
+| AUTH-02 | Зарегистрировать email, который уже зарегистрирован | `409` |
+| AUTH-03 | Передать некорректный email или пароль вне допустимой длины | `422` |
+| AUTH-04 | Войти с корректными учётными данными | `200`; возвращены `access_token` и `token_type: bearer` |
+| AUTH-05 | Войти с неверным паролем или неизвестным email | `401` |
+| AUTH-06 | Запросить `GET /auth/me` с действующим токеном | `200`; возвращены `id`, `email`, `role` |
+| AUTH-07 | Запросить защищённый ресурс без токена или с недействительным токеном | `401` |
+
+### Каталог и калькулятор
+
+| ID | Действие | Ожидаемый результат |
+|---|---|---|
+| CAT-01 | `GET /products` | `200`; перечислены активные продукты |
+| CAT-02 | `GET /products/{product_id}` для активного продукта | `200`; возвращены данные продукта |
+| CAT-03 | Запросить отсутствующий или неактивный продукт | `404` |
+| CALC-01 | `POST /calculator/calculate` с активным продуктом, допустимыми суммой и сроком | `200`; возвращены месячный платёж, общая выплата, переплата, комиссия и предупреждение о предварительном расчёте |
+| CALC-02 | Рассчитать кредит с суммой или сроком вне лимитов продукта | `422` |
+| CALC-03 | Рассчитать кредит по отсутствующему или неактивному продукту | `404` |
+| CALC-04 | Рассчитать продукт с процентной или фиксированной комиссией | Если задан `commission_rate`, рассчитывается процентная комиссия; `commission_amount` используется, только когда `commission_rate` не задан. Комиссия включена в общую выплату и переплату |
+| CALC-05 | `POST /calculator/compare` с допустимыми суммой и сроком | `200`; только подходящие активные продукты, отсортированные по возрастанию общей выплаты |
+| CALC-06 | Сравнить сумму/срок, которым не соответствует ни один активный продукт | `200`; `products` — пустой список |
+| CALC-07 | Передать неположительную сумму или срок | `422` |
+
+### Профиль бизнеса
+
+| ID | Действие | Ожидаемый результат |
+|---|---|---|
+| PROF-01 | `GET /business-profile` до создания профиля | `404` |
+| PROF-02 | Создать профиль через `PUT /business-profile` с `business_name` и `legal_form` (`IP` или `OOO`) | `200`; возвращены сохранённые данные профиля |
+| PROF-03 | Повторить `PUT /business-profile` с изменёнными данными | `200`; профиль обновлён, второй профиль для пользователя не создаётся |
+| PROF-04 | Передать недопустимую организационную форму или некорректные значения | `422` |
+| PROF-05 | Получить или изменить профиль без токена | `401` |
+| PROF-06 | Создать и запросить профиль от двух пользователей | Каждый пользователь получает собственный профиль |
+
+Для следующих сценариев заявок в профиле необходимо задать `monthly_revenue`: одного лишь названия бизнеса и организационной формы недостаточно.
+
+### Создание, изменение и отправка заявки
+
+Пример запроса для создания заявки:
+
+```json
+{
+  "credit_product_id": 1,
+  "amount": "100000",
+  "term_months": 12,
+  "purpose": "working_capital"
+}
+```
+
+| ID | Действие | Ожидаемый результат |
+|---|---|---|
+| APP-01 | Создать заявку при наличии профиля с выручкой и активного подходящего продукта | `201`; статус `draft`; `monthly_income` заявки получен из месячной выручки профиля |
+| APP-02 | Создать заявку без профиля бизнеса | `409` |
+| APP-03 | Создать заявку с профилем, в котором не указана месячная выручка | `422` |
+| APP-04 | Указать отсутствующий/неактивный продукт, сумму или срок вне лимитов продукта | `422` |
+| APP-05 | Передать некорректную сумму, срок или цель по схеме запроса | `422` |
+| APP-06 | Получить список заявок каждым из двух пользователей | `200`; каждый видит только собственные заявки |
+| APP-07 | Получить свою заявку по ID | `200`; ответ включает сохранённые данные заявки и доступные поля бизнес-профиля |
+| APP-08 | Получить заявку другого пользователя или несуществующую заявку | `404` |
+| APP-09 | Изменить заявку в статусе `draft` через `PATCH /applications/{id}` | `200`; обновлены переданные поля, продукт и лимиты проверены |
+| APP-10 | Изменить заявку, статус которой не `draft` | `409` |
+| APP-11 | Отправить корректную заявку в статусе `draft` через `POST /applications/{id}/submit` | `200`; рассчитаны платежи, установлен предварительный результат, статус изменён на `submitted` |
+| APP-12 | Проверить предварительную оценку при платеже не выше 40% дохода и выше 40% дохода | Соответственно `likely_eligible` и `high_debt_burden`; это не решение банка |
+| APP-13 | Отправить заявку без продукта, с недопустимым продуктом/лимитами или без положительного месячного дохода | `422` |
+| APP-14 | Повторно отправить уже отправленную заявку | `409` |
+
+### История и обработка сотрудником
+
+| ID | Действие | Ожидаемый результат |
+|---|---|---|
+| HIST-01 | Запросить историю сразу после создания заявки | `200`; есть событие `null → draft` |
+| HIST-02 | Запросить историю после отправки заявки | `200`; дополнительно есть событие `draft → submitted` |
+| HIST-03 | Запросить историю чужой/несуществующей заявки или без токена | Соответственно `404` или `401` |
+| STAFF-01 | С клиентским токеном вызвать `GET /applications/staff` или операцию изменения статуса | `403` |
+| STAFF-02 | С токеном `staff`/`admin` получить `GET /applications/staff` | `200`; возвращён общий список заявок |
+| STAFF-03 | Перевести `submitted` через `/check` | `200`; новый статус `checking` |
+| STAFF-04 | Вызвать `/check` для `draft` либо повторить `/check` для `checking` | `409` |
+| STAFF-05 | Вызвать `/request-info` для `submitted` или `checking` | `200`; новый статус `needs_info` |
+| STAFF-06 | Вызвать `/offer-alternative` для `submitted` или `checking` | `200`; новый статус `alternative_offer` |
+| STAFF-07 | Одобрить заявку через `/approve` из `submitted` или `checking` | `200`; новый статус `approved` |
+| STAFF-08 | Отклонить заявку через `/reject` из `submitted` или `checking` с причиной | `200`; статус `rejected`, причина сохранена в `decision_comment` |
+| STAFF-09 | Вызвать `/approve` или `/reject` из недопустимого статуса; отправить причину отклонения короче 3 символов | `409` для статуса; `422` для невалидной причины |
+| STAFF-10 | Запросить историю после действия сотрудника | В истории присутствует соответствующий переход статуса |
+
+Текущий API не предоставляет переходов из `needs_info` и `alternative_offer` для ответа пользователя или повторной отправки; эти сценарии не следует считать реализованными.
+
+### Рекомендации
+
+| ID | Действие | Ожидаемый результат |
+|---|---|---|
+| REC-01 | Создать рекомендацию через `POST /recommendations` с корректными суммой, сроком и целью | `201`; результат сохранён, элементы содержат продукт, `match_score`, платёж и причины |
+| REC-02 | Запросить рекомендацию, несовместимую с диапазоном суммы, сроком, целью или возрастом бизнеса | `201`; неподходящие продукты исключены; если подходящих нет, `items` пуст |
+| REC-03 | Проверить порядок элементов | Элементы отсортированы по убыванию `match_score` |
+| REC-04 | Получить собственную рекомендацию по ID | `200` |
+| REC-05 | Получить рекомендацию другого пользователя или несуществующую | `404` |
+| REC-06 | Создать рекомендацию без токена или передать невалидные входные данные | `401` или `422` соответственно |
+
+## Фактическое покрытие автоматическими тестами
+
+Автоматические тесты находятся в `backend/tests/`:
+
+| Файл | Проверяемая область |
+|---|---|
+| `test_auth.py` | Регистрация, проверка email/пароля, вход, текущий пользователь и токены |
+| `test_products.py` | Список активных продуктов, детали, отсутствующий и неактивный продукт |
+| `test_calculator_api.py` | Расчёт, сравнение, ограничения продуктов, комиссия и disclaimer |
+| `test_calculator.py`, `test_calculator_edge_cases.py` | Расчёт платежей, округление, нулевая ставка и некорректные значения |
+| `test_business_profile.py` | Создание, обновление, чтение, валидация и изоляция профиля |
+| `test_applications.py` | Создание, список, изменение черновика и отправка заявки |
+| `test_application_history.py` | Первоначальная история, отправка, авторизация и доступ к чужой истории |
+| `test_application_statuses.py` | Проверки сотрудника и переходы в `checking`, `needs_info`, `alternative_offer` |
+| `test_application_processing.py` | Предварительная оценка и ошибки обработки заявки |
+| `test_recommendations.py` | Подбор, фильтрация, сохранение, получение и авторизация |
+| `test_security_pytest.py` | Изоляция заявок, запрет изменения отправленной заявки и повторной отправки |
+
+Не все описанные выше ручные случаи покрыты отдельными автотестами. В частности, автоматизированный набор следует дополнить тестами обязательного профиля и выручки при создании заявки, операций одобрения/отклонения и списка заявок сотрудника. Текущие ошибки в существующих тестах заявок связаны с тем, что фикстуры для создания заявок не подготавливают бизнес-профиль, обязательный по действующей реализации.

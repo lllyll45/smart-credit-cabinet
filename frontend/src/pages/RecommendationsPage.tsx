@@ -2,11 +2,18 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import PageLayout from '../components/layout/PageLayout'
 import Input from '../components/ui/Input'
+import Select from '../components/ui/Select'
 import Button from '../components/ui/Button'
 import { createRecommendation } from '../features/recommendations/recommendationsApi'
 import { formatCurrency } from '../utils/formatCurrency'
 import { getErrorMessage } from '../utils/getErrorMessage'
 import type { Recommendation } from '../types/comon'
+
+const PURPOSE_OPTIONS = [
+  { value: 'working_capital', label: 'Пополнение оборотных средств' },
+  { value: 'business_expansion', label: 'Развитие бизнеса' },
+  { value: 'equipment', label: 'Покупка оборудования' },
+]
 
 export default function RecommendationsPage() {
   const [requestedAmount, setRequestedAmount] = useState('1000000')
@@ -46,7 +53,7 @@ export default function RecommendationsPage() {
       return
     }
     if (!purpose.trim()) {
-      setError('Опишите цель кредита.')
+      setError('Выберите цель кредита.')
       return
     }
 
@@ -116,18 +123,15 @@ export default function RecommendationsPage() {
               value={businessAge}
               onChange={(e) => setBusinessAge(e.target.value)}
             />
-            <div className="form-field">
-              <label htmlFor="reco-purpose">Цель кредита</label>
-              <textarea
-                id="reco-purpose"
-                className="input"
-                rows={3}
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-                placeholder="Например, расширение производства"
-                required
-              />
-            </div>
+            <Select
+              id="reco-purpose"
+              label="Цель кредита"
+              name="purpose"
+              options={PURPOSE_OPTIONS}
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              required
+            />
           </div>
 
           {error && <p className="form-error">{error}</p>}

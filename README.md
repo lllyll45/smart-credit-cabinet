@@ -1,109 +1,200 @@
 # Smart Credit Cabinet
 
-Веб-приложение для подбора кредитных предложений и подачи заявок на кредитование малого бизнеса.
+**«Умный кредитный кабинет»** — проект для хакатона Альфа-Банка. Это MVP веб-сервиса, который помогает предпринимателям малого бизнеса изучать кредитные предложения, оценивать условия, получать рекомендации и подавать заявки. Сотрудник банка может просматривать заявки и отмечать результат их рассмотрения.
 
-## Стек
+> Проект демонстрационный: каталог содержит тестовые кредитные продукты, предварительные расчёты и оценки не являются предложением или решением банка. Реальные банковские интеграции, передача заявки в банк и выдача кредита не реализованы.
 
-- Python 3.13, FastAPI, PostgreSQL, SQLAlchemy, Alembic
-- Pydantic, JWT (PyJWT), Argon2 (pwdlib)
-- pytest (84 теста)
-- Docker, Docker Compose
-- Frontend: React, TypeScript, Vite (в разработке)
+## Возможности
 
-## Что сделано
+- Регистрация, вход и аутентификация по JWT.
+- Каталог активных кредитных продуктов.
+- Расчёт аннуитетного платежа и сравнение продуктов по общей выплате.
+- Профиль бизнеса предпринимателя.
+- Подбор продуктов с оценкой соответствия и поясняющими причинами.
+- Создание и отправка кредитной заявки, просмотр её статуса и истории.
+- Интерфейс сотрудника для проверки, запроса дополнительной информации, предложения альтернативы, одобрения или отклонения заявки.
 
-### Backend
+Заявка требует заполненного профиля бизнеса с месячной выручкой. При отправке backend рассчитывает платежи и предварительно оценивает долговую нагрузку: эта оценка не является автоматическим банковским одобрением. Текущий API не поддерживает ответ пользователя на запрос дополнительной информации или альтернативное предложение.
 
-- 7 таблиц: `users`, `credit_products`, `credit_applications`, `application_history`, `business_profiles`, `recommendations`, `recommendation_items`
-- JWT-авторизация, роли `client` / `staff` / `admin`
-- 84 автотеста, все проходят
-- Docker Compose: Postgres + backend одной командой
+## Технологии
 
-### Статусы заявки
+| Область | Технологии |
+|---|---|
+| Frontend | React 19, TypeScript, Vite, React Router, Axios |
+| Backend | Python, FastAPI, Pydantic |
+| База данных | PostgreSQL, SQLAlchemy |
+| Миграции | Alembic |
+| Безопасность | JWT, Argon2 |
+| Автотесты | pytest, SQLite in-memory |
+| Контейнеризация | Docker, Docker Compose |
 
-`draft` → `submitted` → `checking` → `approved` / `rejected` / `needs_info` / `alternative_offer`
+## Структура проекта
 
-Каждый переход пишется в `application_history`.
+```text
+backend/
+  app/
+    api/          HTTP API
+    core/         настройки, база данных, безопасность
+    models/       SQLAlchemy-модели
+    schemas/      схемы запросов и ответов
+    services/     бизнес-логика
+  alembic/        миграции базы данных
+  scripts/        вспомогательные скрипты, в том числе демо-данные
+  tests/          автоматические тесты
+frontend/
+  src/
+    app/          приложение и маршрутизация
+    features/     функции и API-клиенты по областям
+    pages/        страницы приложения
+docs/             документация API и архитектуры
+```
 
-### Подбор предложений
+## Быстрый запуск с Docker Compose
 
-`POST /api/v1/recommendations` — взвешенный `match_score` (0..100):
-- сумма в диапазоне — 40%
-- срок в диапазоне — 30%
-- доход — 20%
-- возраст бизнеса — 10%
+Необходимы Git и Docker Desktop с поддержкой `docker compose`. Команды ниже рассчитаны на PowerShell из корня репозитория.
 
-## Эндпоинты
+1. Используйте коммитимый [шаблон `.env.example`](.env.example), чтобы создать локальный файл настроек для Docker Compose:
 
-### Аккаунт
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `GET /api/v1/auth/me`
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 
-### Каталог
-- `GET /api/v1/products`
-- `GET /api/v1/products/{id}`
+2. В созданном локальном `.env` замените значения-заглушки `POSTGRES_PASSWORD` и `JWT_SECRET_KEY` на собственные. Не коммитьте `.env`: он игнорируется Git. Сгенерировать JWT-секрет можно, например, командой:
 
-### Калькулятор
-- `POST /api/v1/calculator/calculate`
-- `POST /api/v1/calculator/compare`
+   ```powershell
+   python -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
 
-### Заявки
-- `POST /api/v1/applications`
-- `GET /api/v1/applications`
-- `GET /api/v1/applications/{id}`
-- `PATCH /api/v1/applications/{id}`
-- `POST /api/v1/applications/{id}/submit`
-- `GET /api/v1/applications/{id}/history`
+3. Соберите и запустите PostgreSQL, backend и frontend:
 
-### Staff (staff/admin)
-- `GET /api/v1/applications/staff`
-- `POST /api/v1/applications/{id}/check`
-- `POST /api/v1/applications/{id}/request-info`
-- `POST /api/v1/applications/{id}/offer-alternative`
-- `POST /api/v1/applications/{id}/approve`
-- `POST /api/v1/applications/{id}/reject`
+   ```powershell
+   docker compose up --build -d
+   ```
 
-### Профиль бизнеса
-- `GET /api/v1/business-profile`
-- `PUT /api/v1/business-profile`
+4. При старте backend-контейнер автоматически применяет миграции Alembic и запускает синтетическое наполнение из `backend/app/seed.py` перед запуском API. Seed идемпотентен и повторно запускается при перезапуске контейнера. Проверить ход запуска можно командой:
 
-### Рекомендации
-- `POST /api/v1/recommendations`
-- `GET /api/v1/recommendations/{id}`
+   ```powershell
+   docker compose logs -f backend
+   ```
+
+   Seed создаёт демонстрационные аккаунты и продукты, бизнес-профили и заявки. Для всех демо-аккаунтов пароль `DemoPass123!`; используйте эти учётные данные только в локальной демонстрационной среде, не публикуйте сервис как production.
+
+   API будет доступно только если миграции и seed завершились без ошибки. Проверьте состояние контейнеров командой `docker compose ps`. Если в логах backend есть `password authentication failed`, пароль в текущем `.env` не совпадает с паролем PostgreSQL, сохранённым при первоначальном создании Docker volume. Изменение `POSTGRES_PASSWORD` в `.env.example` или `.env` само по себе не меняет пароль в уже инициализированной базе: укажите прежний пароль или согласованно обновите пароль пользователя PostgreSQL. Не удаляйте volume, если нужно сохранить данные.
+
+5. Откройте приложение и API после успешного запуска backend:
+
+   - Frontend: <http://localhost:5173>
+   - API: <http://localhost:8000>
+   - Swagger UI: <http://localhost:8000/docs>
+   - Проверка API: <http://localhost:8000/health>
+
+Остановить сервисы, сохранив данные PostgreSQL:
+
+```powershell
+docker compose down
+```
+
+Чтобы также удалить данные базы из Docker volume:
+
+```powershell
+docker compose down -v
+```
+
+## Локальный запуск без Docker
+
+Нужны Python (Docker-образ backend использует Python 3.12), Node.js 22 или совместимая версия, npm и PostgreSQL. PostgreSQL можно запустить локально; остальные шаги ниже выполняются в отдельных терминалах из корня репозитория.
+
+### 1. Подготовьте PostgreSQL
+
+Создайте базу данных и пользователя (пример для `psql`, выполненный администратором PostgreSQL):
+
+```sql
+CREATE USER smart_credit WITH PASSWORD 'replace_with_a_local_password';
+CREATE DATABASE smart_credit OWNER smart_credit;
+```
+
+Пользуйтесь собственным паролем. Не сохраняйте реальные пароли в репозитории.
+
+### 2. Настройте и запустите backend
+
+Создайте виртуальное окружение, установите зависимости и скопируйте коммитимый шаблон [`.env.example`](.env.example) в локальный `backend/.env`:
+
+```powershell
+Set-Location backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item ..\.env.example .env
+```
+
+Отредактируйте локальный `backend/.env`: укажите пароль созданного пользователя PostgreSQL в `DATABASE_URL` и замените шаблонное значение `JWT_SECRET_KEY` собственным секретом. `backend/.env` — локальная конфигурация и не должна коммититься. Например:
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://smart_credit:replace_with_a_local_password@localhost:5432/smart_credit
+JWT_SECRET_KEY=replace_with_a_long_random_secret
+```
+
+Затем выполните миграции, загрузите синтетические данные и запустите API:
+
+```powershell
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m app.seed
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+Backend будет доступен по адресу <http://127.0.0.1:8000>. Для остановки нажмите `Ctrl+C`.
+
+### 3. Запустите frontend
+
+В новом терминале, из корня репозитория:
+
+```powershell
+Set-Location frontend
+npm ci
+npm run dev
+```
+
+Откройте <http://localhost:5173>. По умолчанию frontend обращается к backend по `http://127.0.0.1:8000/api/v1`. Для другого адреса API задайте `VITE_API_BASE_URL` при запуске Vite.
 
 ## Тесты
 
-84 теста (`pytest -v`), SQLite in-memory с `StaticPool`, `JSONType` (JSONB для Postgres / JSON для SQLite).
+Backend-тесты используют SQLite in-memory, поэтому отдельная тестовая БД PostgreSQL не нужна. Из каталога `backend`:
 
-## Запуск
+```powershell
+.\.venv\Scripts\python.exe -m pytest -v
+```
 
-### Docker (рекомендуется)
-docker compose up --build
+При последней проверке все 84 теста прошли. В выводе pytest может отображаться предупреждение Starlette о совместимости TestClient и `httpx`.
 
-Backend автоматически применяет миграции и заливает демо-продукты. API: http://127.0.0.1:8000, Swagger: http://127.0.0.1:8000/docs.
+Проверки frontend:
 
-### Локально
+```powershell
+Set-Location frontend
+npm run lint
+npm run build
+```
 
-См. [README-setup.md](README-setup.md).
+## API
+
+Корневой префикс API — `/api/v1`. Основные группы:
+
+| Возможность | Маршруты |
+|---|---|
+| Авторизация | `/auth/register`, `/auth/login`, `/auth/me` |
+| Кредитные продукты | `/products`, `/products/{product_id}` |
+| Калькулятор | `/calculator/calculate`, `/calculator/compare` |
+| Профиль бизнеса | `/business-profile` |
+| Заявки и история | `/applications`, `/applications/{application_id}`, `/applications/{application_id}/history` |
+| Операции сотрудника | `/applications/staff`, `/applications/{application_id}/check`, `/request-info`, `/offer-alternative`, `/approve`, `/reject` |
+| Рекомендации | `/recommendations`, `/recommendations/{recommendation_id}` |
+
+Интерактивная документация доступна по `/docs` после запуска backend. Для подробных контрактов и примеров см. [API-документацию](docs/api.md).
 
 ## Документация
 
-- [docs/architecture.md](docs/architecture.md) — архитектура
-- [docs/data-model.md](docs/data-model.md) — 7 таблиц, миграции, match_score
-- [docs/application-states.md](docs/application-states.md) — статусы заявки
-- [docs/api.md](docs/api.md) — все эндпоинты
-
-## Ветки
-
-- `main` — стабильная версия
-- `develop/backend-api`
-- `develop/backend-db`
-- `develop/frontend`
-
-## Ограничения MVP
-
-- `preliminary_result` (40% дохода) — демо-правило, не банковский скоринг
-- Демо-продукты не являются реальными предложениями банков
-- Решение `approved`/`rejected` принимает staff вручную
-- Реальных платежей и передачи данных в банк нет
+- [Архитектура](docs/architecture.md)
+- [Модель данных](docs/data-model.md)
+- [Статусы заявок](docs/application-states.md)
+- [API](docs/api.md)
+- [Сценарии тестирования](docs/test-scenarios.md)
+- [Подробная инструкция по запуску](README-setup.md)

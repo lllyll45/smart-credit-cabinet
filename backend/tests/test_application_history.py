@@ -1,7 +1,8 @@
 ﻿"""Тесты истории изменения статусов заявки."""
 
 
-def _create_application(client, headers, product_id):
+def _create_application(client, headers, product_id, create_business_profile):
+    create_business_profile(headers)
     res = client.post(
         "/api/v1/applications",
         json={
@@ -9,19 +10,19 @@ def _create_application(client, headers, product_id):
             "amount": "100000",
             "term_months": 12,
             "purpose": "Тест",
-            "monthly_income": "50000",
-            "employment": "ИП",
         },
         headers=headers,
     )
-    assert res.status_code == 201
+    assert res.status_code == 201, res.text
     return res.json()["id"]
 
 
-def test_history_recorded_on_create(client, registered_user, product_id):
+def test_history_recorded_on_create(
+    client, registered_user, product_id, create_business_profile
+):
     """При создании заявки в историю пишется old_status=None, new_status=draft."""
     app_id = _create_application(
-        client, registered_user["headers"], product_id
+        client, registered_user["headers"], product_id, create_business_profile
     )
 
     history_res = client.get(
@@ -36,10 +37,12 @@ def test_history_recorded_on_create(client, registered_user, product_id):
     assert "создана" in history[0]["comment"].lower()
 
 
-def test_history_recorded_on_submit(client, registered_user, product_id):
+def test_history_recorded_on_submit(
+    client, registered_user, product_id, create_business_profile
+):
     """После submit в истории 2 записи: draft → submitted."""
     app_id = _create_application(
-        client, registered_user["headers"], product_id
+        client, registered_user["headers"], product_id, create_business_profile
     )
 
     client.post(
@@ -69,11 +72,11 @@ def test_history_404_for_missing_application(client, registered_user):
 
 
 def test_history_404_for_other_user_application(
-    client, registered_user, second_user, product_id
+    client, registered_user, second_user, product_id, create_business_profile
 ):
     """Пользователь B не видит историю заявки пользователя A."""
     app_id = _create_application(
-        client, registered_user["headers"], product_id
+        client, registered_user["headers"], product_id, create_business_profile
     )
 
     history_res = client.get(

@@ -1,214 +1,77 @@
-# Архитектура системы «Умный кредитный кабинет предпринимателя»
+# Архитектура Smart Credit Cabinet
 
-## 1. Назначение
+## Назначение и границы системы
 
-«Умный кредитный кабинет предпринимателя» — веб-приложение для подбора кредитных предложений и подачи заявок на кредитование малого бизнеса. Пользователь регистрируется, заполняет профиль бизнеса, сравнивает предложения, создаёт и отправляет заявку. Сотрудник банка рассматривает заявку и принимает демонстрационное решение.
+Smart Credit Cabinet — веб-приложение для предпринимателей и сотрудников банка. Пользователь может просматривать кредитные продукты, рассчитывать платежи, вести профиль бизнеса, получать рекомендации и подавать заявки. Сотрудник просматривает заявки и меняет их статус.
 
-MVP не использует реальные банковские или государственные интеграции. Данные о продуктах и результат обработки являются демонстрационными.
+Решения по заявкам демонстрационные: приложение не подключено к банковским или государственным системам, не перечисляет деньги и не выполняет реальный банковский скоринг.
 
-## 2. Технологический стек
+## Технологии
 
-| Компонент | Технология | Назначение |
-|---|---|---|
-| Frontend | React, TypeScript, Vite | Пользовательский интерфейс (в разработке) |
-| Backend | Python 3.13, FastAPI | REST API и бизнес-логика |
-develop/backend-db
-| Валидация | Pydantic | Проверка входных и выходных данных |
-| БД | PostgreSQL | Хранение данных |
-| ORM | SQLAlchemy | Доступ к данным |
-| Миграции | Alembic | Управление схемой БД |
-| Аутентификация | JWT, Argon2 | Токены доступа и хеширование паролей |
-| Тесты | pytest | Автоматизированные проверки |
-| API-документация | OpenAPI, Swagger UI | Контракт API и интерактивная документация |
-| Запуск | Docker, Docker Compose | Воспроизводимый запуск компонентов |
+| Часть | Реализация |
+|---|---|
+| Веб-клиент | React 19, TypeScript, Vite, React Router |
+| HTTP-клиент | Axios; адрес API задаётся `VITE_API_BASE_URL`, по умолчанию `http://127.0.0.1:8000/api/v1` |
+| Backend | Python, FastAPI, Pydantic |
+| Хранение данных | PostgreSQL, SQLAlchemy |
+| Миграции | Alembic |
+| Авторизация | JWT bearer-токены; пароли хешируются Argon2 через `pwdlib` |
+| Тесты backend | pytest; тестовая конфигурация использует SQLite и совместимый тип JSON |
+| Запуск | Docker Compose для PostgreSQL, backend и Vite frontend |
 
-## 3. Архитектурная схема
+## Схема компонентов
 
 ```mermaid
 flowchart LR
-    U[Предприниматель / сотрудник] -->|HTTPS/HTTP, браузер| F[Frontend: React + TypeScript]
-    F -->|REST API, JSON, Bearer JWT| A[Backend: FastAPI]
-    A --> S[Сервисы бизнес-логики]
-    S --> ORM[SQLAlchemy]
+    User[Предприниматель или сотрудник] --> Browser[Браузер]
+    Browser --> Frontend[React + TypeScript + Vite]
+    Frontend -->|HTTP, JSON, Bearer JWT| API[FastAPI]
+    API --> Routes[API-маршруты и зависимости]
+    Routes --> Services[Сервисы бизнес-логики]
+    Routes --> ORM[SQLAlchemy-модели и сессии]
+    Services --> ORM
     ORM --> DB[(PostgreSQL)]
-    A --> DOC[OpenAPI / Swagger UI]
-    T[pytest] --> A
-    M[Alembic migrations] --> DB
+    Migrations[Alembic] --> DB
+    API --> OpenAPI[OpenAPI и Swagger UI]
 ```
 
-### Компоненты
+Frontend и backend — отдельные приложения. Backend публикует API под `/api/v1`; документация FastAPI доступна по `/docs`, схема — по `/openapi.json`. CORS-разрешённые адреса frontend и строка подключения к базе задаются конфигурацией backend через переменные окружения.
 
-- **Frontend** отображает каталог, калькулятор, профиль бизнеса, рекомендации, заявки и интерфейс сотрудника.
-- **Backend** предоставляет REST API, проверяет права доступа, валидирует данные и выполняет бизнес-операции.
-- **Сервисы** реализуют расчёт платежей, предварительную оценку заявки, рекомендации и запись истории статусов.
-- **PostgreSQL** хранит пользователей, кредитные продукты, заявки, профили бизнеса, историю и результаты подбора.
-- **Alembic** управляет изменениями схемы базы данных.
-- **pytest** проверяет API и бизнес-логику.
-- **OpenAPI/Swagger UI** предоставляет контракт и интерактивный способ проверять API.
+## Backend
 
-## 4. Основные сценарии
+`backend/app/main.py` создаёт приложение FastAPI, настраивает CORS, подключает маршрутизаторы и публикует `/` и `/health`.
 
-1. Пользователь регистрируется и входит в систему.
-2. Просматривает продукты и рассчитывает ориентировочный платёж.
-3. Заполняет профиль бизнеса.
-4. Запрашивает рекомендации по сумме, сроку и цели.
-5. Создаёт черновик заявки, при необходимости редактирует его и отправляет.
-6. Backend проверяет ограничения продукта, рассчитывает платежи, сохраняет предварительный результат и записывает событие в историю.
-7. Сотрудник с ролью `staff` или `admin` просматривает заявки и меняет статус.
-8. Пользователь просматривает собственную заявку и историю статусов.
+| Пакет | Ответственность |
+|---|---|
+| `app/api/` | HTTP-маршруты: авторизация, заявки, продукты, калькулятор, профиль бизнеса и рекомендации |
+| `app/schemas/` | Pydantic-модели запросов и ответов, валидация данных |
+| `app/models/` | SQLAlchemy-модели семи таблиц |
+| `app/services/` | Аутентификация, расчёт кредита, обработка заявок, история статусов, подбор рекомендаций |
+| `app/core/` | Настройки, движок и сессии БД, JWT/хеширование паролей, общий тип JSON/JSONB |
+| `alembic/` | Версионируемые изменения схемы БД |
+| `scripts/` | Вспомогательные команды, в том числе загрузка демонстрационных продуктов |
+| `tests/` | Тесты API, сервисов и моделей |
 
-## 5. Безопасность и ограничения
+FastAPI-маршруты получают SQLAlchemy-сессию через зависимость `get_db`. Аутентификация использует bearer-токен; зависимости текущего пользователя и сотрудника проверяют пользователя и роли. Роли `staff` и `admin` допускаются к операциям сотрудников.
 
-- Защищённые эндпоинты требуют `Authorization: Bearer <token>`.
-- Пароли хранятся в виде хеша Argon2, а не в открытом виде.
-- Пользователь получает доступ только к собственным заявкам, профилю и сохранённым рекомендациям.
-- Операции сотрудника проверяют роль на backend; скрытие элементов интерфейса само по себе не является механизмом безопасности.
-- Предварительная оценка `likely_eligible` / `high_debt_burden` не является банковским решением.
-- Реальные банковские интеграции и автоматическое перечисление средств не выполняются.
+Вычисления кредита используют аннуитетную схему и `Decimal`. Сервис расчёта не включает комиссию; API-калькулятор отдельно добавляет комиссию продукта к общей выплате и переплате. При отправке заявки сервис обработки рассчитывает платежи и предварительную оценку долговой нагрузки. Эти значения не заменяют решение сотрудника.
 
-## 6. Структура backend
-=======
-| Валидация | Pydantic v2 | Схемы запросов и ответов |
-| БД | PostgreSQL | Хранение данных |
-| ORM | SQLAlchemy 2.x | Доступ к данным |
-| Миграции | Alembic | Управление схемой БД |
-| Аутентификация | JWT (PyJWT), Argon2 (pwdlib) | Токены, хеширование паролей |
-| Тесты | pytest (84 теста) | Автоматическая проверка |
-| API-документация | OpenAPI, Swagger UI | `/docs`, `/openapi.json` |
-| Запуск | Docker, Docker Compose | Воспроизводимый запуск |
+## Frontend
 
-## 3. Архитектурная схема
+Точка входа — `frontend/src/main.tsx`; приложение подключает маршрутизатор и `AuthProvider`. Маршруты собраны в `frontend/src/app/router.tsx`: публичные страницы входа/регистрации, защищённые страницы кабинета и отдельный маршрут сотрудника. UI-защита маршрутов нужна для интерфейса, а проверка доступа к защищённым API выполняется backend.
 
-```mermaid
-flowchart LR
-    U[Предприниматель / сотрудник] -->|HTTP, браузер| F[Frontend: React + TypeScript]
-    F -->|REST API, JSON, Bearer JWT| A[Backend: FastAPI]
-    A --> S[Сервисы: calculator, application_processing, application_history, recommendation]
-    S --> ORM[SQLAlchemy]
-    ORM --> DB[(PostgreSQL)]
-    A --> DOC[OpenAPI / Swagger UI]
-    T[pytest: 84 теста] --> A
-    M[Alembic: 12 миграций] --> DB
-    D[Docker Compose] --> A
-    D --> DB
-```
+Клиент Axios и его перехватчики находятся в `frontend/src/services/apiClients.ts`: токен хранится в `localStorage`, прикрепляется к запросам и удаляется при ответе `401`. Вызовы API сгруппированы по возможностям в `features/` и страницах `pages/`.
 
-## 4. Основные сценарии
+## Данные и согласованность
 
-1. Пользователь регистрируется и входит (JWT).
-2. Просматривает продукты и рассчитывает платёж (`/calculator/calculate`, `/calculator/compare`).
-3. Заполняет профиль бизнеса (`PUT /business-profile`).
-4. Запрашивает рекомендации (`POST /recommendations`).
-5. Создаёт черновик заявки (`POST /applications`), редактирует (`PATCH`), отправляет (`/submit`).
-6. Backend считает платежи, ставит `preliminary_result`, пишет историю, ставит `submitted`.
-7. Staff переводит в `checking`/`needs_info`/`alternative_offer`/`approved`/`rejected`.
-8. Пользователь видит свою заявку и историю (`GET /applications/{id}/history`).
+Реляционная схема включает пользователей, продукты, заявки, профили бизнеса, историю статусов и сохранённые рекомендации. PostgreSQL использует JSONB для полей со списками; общий тип SQLAlchemy подменяет его на JSON в SQLite.
 
-## 5. Безопасность
+При создании заявки backend требует профиль бизнеса и указанную в нём выручку. Значение выручки записывается в `monthly_income` заявки. Создание заявки и переходы между статусами дополнительно записываются в `application_history`.
 
-- Все защищённые эндпоинты требуют `Authorization: Bearer <token>`.
-- Пароли — Argon2, не открытым текстом.
-- Пользователь видит только свои заявки, профиль, подборы.
-- Staff-эндпоинты требуют роль `staff`/`admin` (проверка на backend).
-- `preliminary_result` — не банковское решение.
-- Реальных платежей нет.
+Подробнее: [модель данных](./data-model.md), [состояния заявки](./application-states.md), [API](./api.md).
 
-## 6. Структура backend (актуальная)
-     main
+## Запуск и конфигурация
 
-```text
-backend/
-├── app/
-│   ├── api/          # auth, applications, products, calculator,
-│   │                 # business_profile, recommendations
-│   ├── core/         # config, database, json_type, security
-│   ├── models/       # SQLAlchemy-модели
-│   ├── schemas/      # Pydantic-схемы
-│   ├── services/     # бизнес-логика
-│   └── main.py       # создание FastAPI и подключение роутеров
-├── alembic/
-│   └── versions/     # миграции
-├── scripts/
-│   └── seed_products.py
-├── tests/
-│   ├── api/
-│   │   ├── auth.py
-│   │   ├── applications.py
-│   │   ├── products.py
-│   │   ├── calculator.py
-│   │   ├── business_profile.py
-│   │   └── recommendations.py
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── json_type.py
-│   │   └── security.py
-│   ├── models/
-│   │   ├── user.py
-│   │   ├── credit_application.py
-│   │   ├── credit_product.py
-│   │   ├── application_history.py
-│   │   ├── business_profile.py
-│   │   └── recommendation.py
-│   ├── schemas/
-│   │   ├── auth.py
-│   │   ├── credit_application.py
-│   │   ├── credit_product.py
-│   │   ├── calculator.py
-│   │   ├── application_history.py
-│   │   ├── application_decision.py
-│   │   ├── business_profile.py
-│   │   └── recommendation.py
-│   ├── services/
-│   │   ├── auth.py
-│   │   ├── calculator.py
-│   │   ├── application_processing.py
-│   │   ├── application_history.py
-│   │   └── recommendation.py
-│   └── main.py
-├── alembic/
-│   └── versions/     # 12 миграций
-├── scripts/
-│   └── seed_products.py
-├── tests/            # 84 теста
-├── Dockerfile
-├── .dockerignore
-├── alembic.ini
-└── requirements.txt
-```
+Docker Compose определяет PostgreSQL, backend и Vite frontend. При старте backend-контейнер сначала применяет миграции Alembic, затем запускает `python -m app.seed` для загрузки синтетических пользователей, кредитных продуктов, профилей бизнеса и заявок, после чего запускает Uvicorn. Ошибка миграции или загрузки данных останавливает запуск API. Seed рассчитан на локальную демонстрационную среду и не предназначен для production.
 
-## 7. API и запуск
-
-Префикс API: `/api/v1`. После запуска backend:
- develop/backend-db
-- Swagger UI: `/docs`
-- OpenAPI JSON: `/openapi.json`
-
-Команды запуска зависят от конфигурации проекта. Для локального запуска backend обычно используется `uvicorn app.main:app --reload` из каталога `backend`. Для команд Docker Compose используйте актуальные инструкции корневого `README.md`.
-
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
-
-### Docker (рекомендуется)
-
-```powershell
-docker compose up --build
-```
-
-Backend автоматически применяет миграции и заливает демо-продукты.
-
-### Локально
-
-```powershell
-cd backend
-.\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m scripts.seed_products
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
-```
-
-Подробности — в `README-setup.md`.
-
-## 8. Тестирование
-
-84 теста (`pytest -v`), SQLite in-memory с `StaticPool`, `JSONType` (JSONB для Postgres / JSON для SQLite). Покрыто: auth, applications, processing, history, statuses, business profile, recommendations, calculator, products, security.
-   main
+Для локального запуска и настройки переменных окружения см. [инструкцию по запуску](../README-setup.md). Секрет JWT, URL базы данных и CORS-источники должны задаваться конфигурацией окружения, а не храниться в исходном коде.

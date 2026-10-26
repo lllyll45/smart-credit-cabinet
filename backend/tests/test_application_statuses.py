@@ -31,8 +31,9 @@ def staff_headers(client, TestingSessionLocal):
 
 
 def _make_submitted_application(
-    client, registered_user, product_id
+    client, registered_user, product_id, create_business_profile
 ):
+    create_business_profile(registered_user["headers"])
     created = client.post(
         "/api/v1/applications",
         json={
@@ -40,25 +41,25 @@ def _make_submitted_application(
             "amount": "100000",
             "term_months": 12,
             "purpose": "Тест",
-            "monthly_income": "50000",
-            "employment": "ИП",
         },
         headers=registered_user["headers"],
     )
+    assert created.status_code == 201, created.text
     app_id = created.json()["id"]
 
-    client.post(
+    submitted = client.post(
         f"/api/v1/applications/{app_id}/submit",
         headers=registered_user["headers"],
     )
+    assert submitted.status_code == 200, submitted.text
     return app_id
 
 
 def test_staff_can_move_to_checking(
-    client, registered_user, staff_headers, product_id
+    client, registered_user, staff_headers, product_id, create_business_profile
 ):
     app_id = _make_submitted_application(
-        client, registered_user, product_id
+        client, registered_user, product_id, create_business_profile
     )
 
     res = client.post(
@@ -70,10 +71,10 @@ def test_staff_can_move_to_checking(
 
 
 def test_client_cannot_move_to_checking(
-    client, registered_user, product_id
+    client, registered_user, product_id, create_business_profile
 ):
     app_id = _make_submitted_application(
-        client, registered_user, product_id
+        client, registered_user, product_id, create_business_profile
     )
 
     res = client.post(
@@ -84,10 +85,10 @@ def test_client_cannot_move_to_checking(
 
 
 def test_staff_can_request_info(
-    client, registered_user, staff_headers, product_id
+    client, registered_user, staff_headers, product_id, create_business_profile
 ):
     app_id = _make_submitted_application(
-        client, registered_user, product_id
+        client, registered_user, product_id, create_business_profile
     )
 
     res = client.post(
@@ -99,10 +100,10 @@ def test_staff_can_request_info(
 
 
 def test_staff_can_offer_alternative(
-    client, registered_user, staff_headers, product_id
+    client, registered_user, staff_headers, product_id, create_business_profile
 ):
     app_id = _make_submitted_application(
-        client, registered_user, product_id
+        client, registered_user, product_id, create_business_profile
     )
 
     res = client.post(
@@ -114,10 +115,10 @@ def test_staff_can_offer_alternative(
 
 
 def test_checking_recorded_in_history(
-    client, registered_user, staff_headers, product_id
+    client, registered_user, staff_headers, product_id, create_business_profile
 ):
     app_id = _make_submitted_application(
-        client, registered_user, product_id
+        client, registered_user, product_id, create_business_profile
     )
 
     client.post(
@@ -137,8 +138,9 @@ def test_checking_recorded_in_history(
 
 
 def test_cannot_check_draft_application(
-    client, registered_user, staff_headers, product_id
+    client, registered_user, staff_headers, product_id, create_business_profile
 ):
+    create_business_profile(registered_user["headers"])
     created = client.post(
         "/api/v1/applications",
         json={
@@ -146,11 +148,10 @@ def test_cannot_check_draft_application(
             "amount": "100000",
             "term_months": 12,
             "purpose": "Тест",
-            "monthly_income": "50000",
-            "employment": "ИП",
         },
         headers=registered_user["headers"],
     )
+    assert created.status_code == 201, created.text
     app_id = created.json()["id"]
 
     res = client.post(
@@ -161,10 +162,10 @@ def test_cannot_check_draft_application(
 
 
 def test_cannot_check_twice(
-    client, registered_user, staff_headers, product_id
+    client, registered_user, staff_headers, product_id, create_business_profile
 ):
     app_id = _make_submitted_application(
-        client, registered_user, product_id
+        client, registered_user, product_id, create_business_profile
     )
 
     client.post(

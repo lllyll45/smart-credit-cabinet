@@ -1,126 +1,168 @@
 # API Smart Credit Cabinet
 
-Базовый префикс: `/api/v1`. Защищённые эндпоинты требуют `Authorization: Bearer <token>`.
+## Общая информация
+
+**Название:** Smart Credit Cabinet  
+**Версия API:** `0.1.0`  
+**Базовый префикс:** `/api/v1`  
+**Swagger UI:** `http://localhost:8000/docs`  
+**OpenAPI JSON:** `http://localhost:8000/openapi.json`
+
+Защищённые эндпоинты требуют JWT-токен в заголовке:
+
+```http
+Authorization: Bearer <token>
+```
+
+Формат JSON используется для большинства запросов. Авторизация через логин выполняется с типом содержимого `application/x-www-form-urlencoded`.
 
 ## 1. Аккаунт и авторизация
 
 | Метод | Путь | Авторизация | Назначение |
 |---|---|---|---|
-| POST | `/auth/register` | Нет | Регистрация |
-| POST | `/auth/login` | Нет | Получение JWT |
-| GET | `/auth/me` | Да | Текущий пользователь |
+| POST | `/auth/register` | Нет | Регистрация пользователя |
+| POST | `/auth/login` | Нет | Получение JWT-токена |
+| GET | `/auth/me` | Да | Получение данных текущего пользователя |
 
-Регистрация принимает `email` (EmailStr) и `password` (8–128 символов). Вход принимает `username` (email) и `password` в формате `application/x-www-form-urlencoded`.
+### Регистрация
 
-Пример регистрации:
+Эндпоинт: `POST /api/v1/auth/register`
+
+Тело запроса:
+
 ```json
-{"email":"demo@example.com","password":"DemoPass123"}
+{
+  "email": "demo@example.com",
+  "password": "DemoPass123"
+}
 ```
 
-Ответ логина:
-```json
-{"access_token":"<jwt>","token_type":"bearer"}
+Поля:
+- `email` — корректный адрес электронной почты.
+- `password` — пароль длиной от 8 до 128 символов.
+
+Успешный ответ — `201 Created`. Возвращаются `id`, `email` и `created_at`.
+
+### Вход
+
+Эндпоинт: `POST /api/v1/auth/login`
+
+Тип содержимого: `application/x-www-form-urlencoded`.
+
+Поля формы:
+- `username` — email пользователя;
+- `password` — пароль.
+
+Пример полей формы:
+
+```text
+username=demo@example.com
+password=DemoPass123
 ```
+
+Ответ:
+
+```json
+{
+  "access_token": "<jwt>",
+  "token_type": "bearer"
+}
+```
+
+Полученный `access_token` используется для обращения к защищённым эндпоинтам.
+
+### Текущий пользователь
+
+Эндпоинт: `GET /api/v1/auth/me`
+
+Требует авторизации. Возвращает данные текущего пользователя; точная схема ответа в OpenAPI не определена.
 
 ## 2. Кредитные продукты
 
 | Метод | Путь | Авторизация | Назначение |
 |---|---|---|---|
-| GET | `/products` | Нет | Список активных продуктов |
-| GET | `/products/{id}` | Нет | Детали продукта (404 для неактивного) |
+| GET | `/products` | Нет | Получение списка продуктов |
+| GET | `/products/{product_id}` | Нет | Получение продукта по ID |
 
-Поля продукта: `id`, `name`, `bank_name`, `interest_rate`, `min_amount`, `max_amount`, `min_term_months`, `max_term_months`, `commission_rate`, `commission_amount`, `description`, `additional_conditions`, `supported_purposes`, `min_business_age_months`, `requires_collateral`, `is_active`, `created_at`, `updated_at`.
+### Основные поля ответа
 
-## 3. Калькулятор
+Согласно OpenAPI, схема `CreditProductResponse` включает:
 
-| Метод | Путь | Авторизация | Назначение |
-|---|---|---|---|
-| POST | `/calculator/calculate` | Нет | Расчёт по продукту |
-| POST | `/calculator/compare` | Нет | Сравнение продуктов |
+- `id` — идентификатор;
+- `name` — название продукта;
+- `bank_name` — название банка;
+- `interest_rate` — процентная ставка;
+- `min_amount`, `max_amount` — допустимая сумма кредита;
+- `min_term_months`, `max_term_months` — минимальный и максимальный срок;
+- `commission_rate`, `commission_amount` — параметры комиссии, если заданы;
+- `is_active` — признак активности;
+- `created_at`, `updated_at` — даты создания и обновления.
 
-`/calculator/calculate`:
-```json
-{"product_id": 1, "amount": "120000", "term_months": 12}
-```
-Ответ: `product_id`, `product_name`, `bank_name`, `interest_rate`, `amount`, `term_months`, `monthly_payment`, `total_payment`, `overpayment`, `commission`, `disclaimer`.
+Хотя модель продукта может содержать описание, допустимые цели, требования к возрасту бизнеса и обеспечению, эти поля не включены в опубликованную схему `CreditProductResponse`. Если они должны возвращаться клиенту, необходимо дополнить схему и проверить фактический ответ API.
 
-Ошибки: `404` — продукт не найден/неактивен; `422` — сумма или срок вне диапазона.
-
-`/calculator/compare`:
-```json
-{"amount": "120000", "term_months": 12}
-```
-Ответ: `amount`, `term_months`, `products` (отсортированы по `total_payment` по возрастанию).
-
-## 4. Заявки
+## 3. Кредитный калькулятор
 
 | Метод | Путь | Авторизация | Назначение |
 |---|---|---|---|
-| POST | `/applications` | Да | Создать черновик |
-| GET | `/applications` | Да | Список собственных заявок |
-| GET | `/applications/{id}` | Да | Получить свою заявку |
-| PATCH | `/applications/{id}` | Да | Изменить черновик |
-| POST | `/applications/{id}/submit` | Да | Отправить заявку |
-| GET | `/applications/{id}/history` | Да | История статусов |
+| POST | `/calculator/calculate` | Нет | Расчёт кредита по выбранному продукту |
+| POST | `/calculator/compare` | Нет | Сравнение кредитных продуктов |
 
-Тело создания:
+### Расчёт кредита
+
+Эндпоинт: `POST /api/v1/calculator/calculate`
+
+Тело запроса:
+
 ```json
 {
-  "credit_product_id": 1,
-  "amount": "100000",
-  "term_months": 12,
-  "purpose": "Тестовая цель",
-  "monthly_income": "50000",
-  "employment": "ИП"
+  "product_id": 1,
+  "amount": "120000",
+  "term_months": 12
 }
 ```
 
-Статус после создания: `draft`.
+Обязательные поля:
+- `product_id` — идентификатор продукта;
+- `amount` — сумма кредита больше нуля;
+- `term_months` — срок в месяцах больше нуля.
 
-Ошибки создания: `422` — продукт не найден/неактивен, сумма или срок вне лимита, доход ≤ 0.
+В ответе предусмотрены:
+- `product_id`, `product_name`, `bank_name`;
+- `interest_rate`, `amount`, `term_months`;
+- `monthly_payment` — ежемесячный платёж;
+- `total_payment` — общая сумма выплат;
+- `overpayment` — переплата;
+- `commission` — комиссия;
+- `disclaimer` — предупреждение о предварительном характере расчёта.
 
-При `submit`:
-1. Проверка статуса `draft`.
-2. Проверка продукта (активен, сумма и срок в лимитах).
-3. Расчёт `monthly_payment`, `total_payment`, `overpayment`.
-4. Установка `preliminary_result`:
-   - `likely_eligible` — платёж ≤ 40% дохода;
-   - `high_debt_burden` — платёж > 40% дохода.
-5. Статус → `submitted`, запись в историю.
+### Сравнение продуктов
 
-Ошибки: `404` — заявка не найдена/чужая; `409` — не `draft`; `422` — нет продукта/данные не проходят.
+Эндпоинт: `POST /api/v1/calculator/compare`
 
-`/history` возвращает массив записей: `id`, `application_id`, `old_status`, `new_status`, `comment`, `created_at` (хронологический порядок).
+Тело запроса:
 
-## 5. Обработка заявок сотрудником
-
-Требуется роль `staff` или `admin` (иначе `403`).
-
-| Метод | Путь | Переход |
-|---|---|---|
-| GET | `/applications/staff` | Просмотр всех заявок |
-| POST | `/applications/{id}/check` | `submitted` → `checking` |
-| POST | `/applications/{id}/request-info` | `submitted`/`checking` → `needs_info` |
-| POST | `/applications/{id}/offer-alternative` | `submitted`/`checking` → `alternative_offer` |
-| POST | `/applications/{id}/approve` | `submitted` → `approved` |
-| POST | `/applications/{id}/reject` | `submitted` → `rejected` |
-
-`/reject` принимает:
 ```json
-{"reason": "Недостаточный доход"}
+{
+  "amount": "120000",
+  "term_months": 12
+}
 ```
-`reason` — минимум 3 символа (после `.strip()`), иначе `422`. Причина сохраняется в `decision_comment` и в истории.
 
-Каждый переход записывает событие в `application_history`.
+В ответе возвращаются сумма, срок и массив рассчитанных продуктов. Правила фильтрации и сортировки необходимо подтверждать реализацией калькулятора: OpenAPI описывает структуру ответа, но не фиксирует алгоритм сравнения.
 
-## 6. Профиль бизнеса
+## 4. Профиль бизнеса
 
 | Метод | Путь | Авторизация | Назначение |
 |---|---|---|---|
-| GET | `/business-profile` | Да | Получить профиль (404 если нет) |
-| PUT | `/business-profile` | Да | Создать или обновить (upsert) |
+| GET | `/business-profile` | Да | Получение профиля текущего пользователя |
+| PUT | `/business-profile` | Да | Создание или полное обновление профиля |
 
-Тело `PUT`:
+### Создание или обновление профиля
+
+Эндпоинт: `PUT /api/v1/business-profile`
+
+Пример запроса:
+
 ```json
 {
   "business_name": "ООО Ромашка",
@@ -132,16 +174,140 @@
 }
 ```
 
-`legal_form` — строго `IP` или `OOO` (иначе `422`). `business_name` — 1..255. `monthly_revenue` — ≥ 0.
+Поля:
+- `business_name` — название бизнеса, от 1 до 255 символов;
+- `legal_form` — организационно-правовая форма: `IP` или `OOO`;
+- `industry` — отрасль;
+- `region` — регион;
+- `business_start_date` — дата начала деятельности в формате `YYYY-MM-DD`;
+- `monthly_revenue` — среднемесячная выручка, неотрицательное число.
 
-## 7. Рекомендации
+Обязательны только `business_name` и `legal_form`; остальные поля могут быть `null` или отсутствовать.
+
+Успешный ответ содержит `BusinessProfileResponse`, включая `id`, `user_id`, данные бизнеса и временные метки.
+
+**Важно:** профиль бизнеса связан с текущим авторизованным пользователем. Перед созданием заявки следует убедиться, что профиль заполнен, если этого требует бизнес-логика приложения.
+
+## 5. Кредитные заявки
 
 | Метод | Путь | Авторизация | Назначение |
 |---|---|---|---|
-| POST | `/recommendations` | Да | Создать подбор |
-| GET | `/recommendations/{id}` | Да | Получить сохранённый подбор (404 для чужого) |
+| POST | `/applications` | Да | Создание черновика |
+| GET | `/applications` | Да | Список заявок текущего пользователя |
+| GET | `/applications/{application_id}` | Да | Получение заявки |
+| PATCH | `/applications/{application_id}` | Да | Изменение черновика |
+| POST | `/applications/{application_id}/submit` | Да | Отправка на рассмотрение |
+| GET | `/applications/{application_id}/history` | Да | История изменений статуса |
 
-Тело `POST`:
+### Создание заявки
+
+Эндпоинт: `POST /api/v1/applications`
+
+Тело запроса:
+
+```json
+{
+  "credit_product_id": 1,
+  "amount": "100000",
+  "term_months": 12,
+  "purpose": "working_capital"
+}
+```
+
+Все четыре поля обязательны:
+
+- `credit_product_id` — идентификатор кредитного продукта;
+- `amount` — сумма больше нуля;
+- `term_months` — срок больше нуля;
+- `purpose` — цель кредитования длиной от 3 до 255 символов.
+
+По описанию эндпоинта создаётся черновик заявки с использованием профиля бизнеса текущего пользователя.
+
+Поля `monthly_income` и `employment` не входят в опубликованную схему `CreditApplicationCreate`; передавать их как обязательные поля не требуется по текущему OpenAPI-контракту.
+
+Успешный ответ — `201 Created`, тело соответствует `CreditApplicationResponse`.
+
+### Изменение черновика
+
+Эндпоинт: `PATCH /api/v1/applications/{application_id}`
+
+Позволяет передать поля для изменения:
+- `credit_product_id`;
+- `amount`;
+- `term_months`;
+- `purpose`.
+
+Поля необязательны и могут быть `null` согласно схеме OpenAPI. Эндпоинт описан как изменение заявки, пока она находится в статусе черновика.
+
+### Отправка заявки
+
+Эндпоинт: `POST /api/v1/applications/{application_id}/submit`
+
+Описание API указывает, что при отправке рассчитываются платежи и заявка передаётся сотруднику на рассмотрение.
+
+Предусмотренные в схеме заявки поля результата:
+- `monthly_payment`;
+- `total_payment`;
+- `overpayment`;
+- `preliminary_result`;
+- `status`.
+
+
+### История заявки
+
+Эндпоинт: `GET /api/v1/applications/{application_id}/history`
+
+Возвращает массив записей `ApplicationHistoryResponse`:
+
+- `id`;
+- `application_id`;
+- `old_status`;
+- `new_status`;
+- `comment`;
+- `created_at`.
+
+## 6. Обработка заявок сотрудником
+
+Для этих операций предусмотрены отдельные эндпоинты. Согласно назначению API, доступ к ним должен быть у сотрудников банка.
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/applications/staff` | Получение списка заявок для сотрудников |
+| POST | `/applications/{application_id}/check` | Перевод заявки на проверку |
+| POST | `/applications/{application_id}/request-info` | Запрос дополнительной информации |
+| POST | `/applications/{application_id}/offer-alternative` | Предложение альтернативных условий |
+| POST | `/applications/{application_id}/approve` | Одобрение заявки |
+| POST | `/applications/{application_id}/reject` | Отклонение заявки |
+
+### Отклонение заявки
+
+Эндпоинт: `POST /api/v1/applications/{application_id}/reject`
+
+Тело запроса:
+
+```json
+{
+  "reason": "Недостаточный доход"
+}
+```
+
+Поле `reason` обязательно, длина — от 3 до 1000 символов.
+
+
+
+## 7. Рекомендации по кредитным продуктам
+
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| POST | `/recommendations` | Да | Создание и сохранение результата подбора |
+| GET | `/recommendations/{recommendation_id}` | Да | Получение сохранённого подбора |
+
+### Создание рекомендации
+
+Эндпоинт: `POST /api/v1/recommendations`
+
+Пример запроса:
+
 ```json
 {
   "requested_amount": "200000",
@@ -152,61 +318,84 @@
 }
 ```
 
-Ответ:
-```json
-{
-  "id": 1,
-  "user_id": 1,
-  "requested_amount": "200000.00",
-  "term_months": 18,
-  "purpose": "working_capital",
-  "monthly_revenue": "200000.00",
-  "business_age_months": 24,
-  "created_at": "...",
-  "items": [
-    {
-      "id": 1,
-      "product_id": 1,
-      "match_score": "92.00",
-      "estimated_monthly_payment": "11110.40",
-      "reasons": ["Сумма входит в диапазон продукта", "..."]
-    }
-  ]
-}
-```
+Обязательные поля:
+- `requested_amount` — запрашиваемая сумма больше нуля;
+- `term_months` — срок больше нуля;
+- `purpose` — цель кредитования, от 1 до 100 символов.
 
-Фильтрация:
-- продукт активен;
-- сумма и срок в диапазоне продукта;
-- `purpose` ∈ `supported_purposes` (если список не пуст);
-- `business_age_months` ≥ `min_business_age_months` (если задано).
+Необязательные поля:
+- `monthly_revenue` — среднемесячная выручка;
+- `business_age_months` — возраст бизнеса в месяцах.
 
-`match_score` (0..100) — взвешенный: сумма 40%, срок 30%, доход 20%, возраст бизнеса 10%.
+Успешный ответ — `201 Created`. Он содержит идентификатор рекомендации, исходные параметры, дату создания и массив элементов результата.
 
-## 8. Сводная таблица
+Элемент рекомендации включает:
+- `product_id`;
+- `match_score`;
+- `estimated_monthly_payment`;
+- `reasons` — список объяснений соответствия продукта.
 
-| Метод | Путь | Авторизация |
-|---|---|---|
-| POST | `/auth/register` | Нет |
-| POST | `/auth/login` | Нет |
-| GET | `/auth/me` | Да |
-| GET | `/products` | Нет |
-| GET | `/products/{id}` | Нет |
-| POST | `/calculator/calculate` | Нет |
-| POST | `/calculator/compare` | Нет |
-| POST | `/applications` | Да |
-| GET | `/applications` | Да |
-| GET | `/applications/{id}` | Да |
-| PATCH | `/applications/{id}` | Да |
-| POST | `/applications/{id}/submit` | Да |
-| GET | `/applications/{id}/history` | Да |
-| GET | `/applications/staff` | staff/admin |
-| POST | `/applications/{id}/check` | staff/admin |
-| POST | `/applications/{id}/request-info` | staff/admin |
-| POST | `/applications/{id}/offer-alternative` | staff/admin |
-| POST | `/applications/{id}/approve` | staff/admin |
-| POST | `/applications/{id}/reject` | staff/admin |
-| GET | `/business-profile` | Да |
-| PUT | `/business-profile` | Да |
-| POST | `/recommendations` | Да |
-| GET | `/recommendations/{id}` | Да |
+### Получение рекомендации
+
+Эндпоинт: `GET /api/v1/recommendations/{recommendation_id}`
+
+Возвращает сохранённую рекомендацию. Согласно описанию эндпоинта, она относится к текущему пользователю.
+
+
+## 8. Служебные эндпоинты
+
+| Метод | Путь | Авторизация | Назначение |
+|---|---|---|---|
+| GET | `/` | Нет | Корневой эндпоинт |
+| GET | `/health` | Нет | Проверка доступности сервиса |
+
+## 9. Полный список эндпоинтов
+
+Все пути ниже указаны относительно префикса `/api/v1`.
+
+| Метод | Путь |
+|---|---|
+| POST | `/auth/register` |
+| POST | `/auth/login` |
+| GET | `/auth/me` |
+| GET | `/products` |
+| GET | `/products/{product_id}` |
+| POST | `/calculator/calculate` |
+| POST | `/calculator/compare` |
+| GET | `/business-profile` |
+| PUT | `/business-profile` |
+| POST | `/applications` |
+| GET | `/applications` |
+| GET | `/applications/{application_id}` |
+| PATCH | `/applications/{application_id}` |
+| POST | `/applications/{application_id}/submit` |
+| GET | `/applications/{application_id}/history` |
+| GET | `/applications/staff` |
+| POST | `/applications/{application_id}/check` |
+| POST | `/applications/{application_id}/request-info` |
+| POST | `/applications/{application_id}/offer-alternative` |
+| POST | `/applications/{application_id}/approve` |
+| POST | `/applications/{application_id}/reject` |
+| POST | `/recommendations` |
+| GET | `/recommendations/{recommendation_id}` |
+| GET | `/` |
+| GET | `/health` |
+
+## 10. Проверка API
+
+Для проверки запросов используйте Swagger UI:
+
+`http://localhost:8000/docs`
+
+Рекомендуемый порядок проверки пользовательского сценария:
+
+1. Зарегистрировать пользователя или войти под тестовым аккаунтом.
+2. Получить JWT-токен.
+3. Выполнить авторизованный запрос к `/auth/me`.
+4. Получить список кредитных продуктов.
+5. Создать или обновить профиль бизнеса через `/business-profile`.
+6. Создать заявку через `/applications`.
+7. Отправить черновик на рассмотрение через `/applications/{application_id}/submit`.
+8. Проверить заявку и историю её статусов.
+9. Войти под аккаунтом сотрудника и проверить операции обработки заявок.
+

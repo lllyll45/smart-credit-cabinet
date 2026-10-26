@@ -95,7 +95,7 @@ DEMO_BUSINESSES = [
     {
         "email": "owner.cafe@example.com",
         "business_name": "Кафе «Уют»",
-        "legal_form": "ИП",
+        "legal_form": "IP",
         "industry": "Общественное питание",
         "region": "Москва",
         "business_start_date": date(2022, 5, 1),
@@ -104,7 +104,7 @@ DEMO_BUSINESSES = [
     {
         "email": "owner.shop@example.com",
         "business_name": "Интернет-магазин «Покупай»",
-        "legal_form": "ООО",
+        "legal_form": "OOO",
         "industry": "Электронная торговля",
         "region": "Санкт-Петербург",
         "business_start_date": date(2023, 2, 1),
@@ -113,7 +113,7 @@ DEMO_BUSINESSES = [
     {
         "email": "owner.factory@example.com",
         "business_name": "Мастерская «Профи»",
-        "legal_form": "ООО",
+        "legal_form": "OOO",
         "industry": "Производство",
         "region": "Казань",
         "business_start_date": date(2021, 9, 1),
@@ -225,7 +225,7 @@ def seed_database() -> None:
                     "amount": Decimal("1500000"),
                     "term": 18,
                     "purpose": "working_capital",
-                    "status": "under_review",
+                    "status": "checking",
                     "comment": "Пополнение оборотных средств",
                 },
             ]

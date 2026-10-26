@@ -98,6 +98,24 @@ def second_user(client):
     }
 
 
+@pytest.fixture
+def create_business_profile(client):
+    def _create(headers, monthly_revenue="50000"):
+        response = client.put(
+            "/api/v1/business-profile",
+            json={
+                "business_name": "Тестовый бизнес",
+                "legal_form": "IP",
+                "monthly_revenue": monthly_revenue,
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    return _create
+
+
 @pytest.fixture(scope="function")
 def auth_headers(registered_user, second_user):
     """Совместимость со старыми тестами: {'a': headers, 'b': headers}."""

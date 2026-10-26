@@ -1,14 +1,14 @@
 """Тесты CRUD и submit кредитных заявок."""
 
-import pytest
-from sqlalchemy import select
-
 from app.models.credit_product import CreditProduct
 
 
 # ---------- СОЗДАНИЕ ----------
 
-def test_create_application_success(client, registered_user, product_id):
+def test_create_application_success(
+    client, registered_user, product_id, create_business_profile
+):
+    create_business_profile(registered_user["headers"])
     res = client.post(
         "/api/v1/applications",
         json={
@@ -16,16 +16,15 @@ def test_create_application_success(client, registered_user, product_id):
             "amount": "100000",
             "term_months": 12,
             "purpose": "Тестовая цель",
-            "monthly_income": "50000",
-            "employment": "ИП",
         },
         headers=registered_user["headers"],
     )
-    assert res.status_code == 201
+    assert res.status_code == 201, res.text
     data = res.json()
     assert data["status"] == "draft"
     assert data["credit_product_id"] == product_id
     assert data["user_id"] == registered_user["user"]["id"]
+    assert data["monthly_income"] == "50000.00"
 
 
 def test_create_with_missing_product(client, registered_user):
@@ -114,21 +113,23 @@ def test_create_term_out_of_range(client, registered_user, product_id):
 # ---------- СПИСОК ----------
 
 def test_list_returns_only_own_applications(
-    client, registered_user, second_user, product_id
+    client, registered_user, second_user, product_id, create_business_profile
 ):
-    for headers in (registered_user["headers"], second_user["headers"]):
-        client.post(
+    create_business_profile(registered_user["headers"])
+    create_business_profile(second_user["headers"])
+
+    for user in (registered_user, second_user):
+        created = client.post(
             "/api/v1/applications",
             json={
                 "credit_product_id": product_id,
                 "amount": "100000",
                 "term_months": 12,
                 "purpose": "Тест",
-                "monthly_income": "50000",
-                "employment": "ИП",
             },
-            headers=headers,
+            headers=user["headers"],
         )
+        assert created.status_code == 201, created.text
 
     res_a = client.get("/api/v1/applications", headers=registered_user["headers"])
     res_b = client.get("/api/v1/applications", headers=second_user["headers"])
